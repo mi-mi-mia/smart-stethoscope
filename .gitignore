@@ -42,3 +42,6 @@ models/
 .credentials
 secrets.toml
 *.json
+
+# Local reference notebooks (not tracked)
+notebooks/kaggle_ref/
