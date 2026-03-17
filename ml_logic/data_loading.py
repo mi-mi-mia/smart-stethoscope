@@ -36,10 +36,14 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
     of all annotation files in the folder as a dataframe including the information
     from the file name.
 
-    raw_audio_path=path to the folder where all the raw audio annotation files are
+    Parameters
+    ----------
+    raw_audio_path : Path
+        Path to the folder where all the raw audio annotation files are
 
-    Returns:
-    annotation_data = DataFrame of all audio annotations.
+    Returns
+    -------
+    annotapd.dataFrame : DataFrame of all audio annotations.
     """
     files_data = []
     for file in raw_audio_path.glob("*.txt"):
@@ -91,3 +95,40 @@ def extract_breathing_cycles():
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
 
     print(f"✅ Processed {len(annotation_data)} audio files")
+
+
+def load_tabular_data():
+    # load demographic data
+    demographic_data_path = Path("../raw_data/demographic_info.txt")
+    demographic_data = pd.read_csv(
+        demographic_data_path,
+        sep=" ",
+        header=None,
+        names=["pid", "age", "sex", "adult_bmi", "child_weight", "child_height"],
+    )
+
+    # load patient diagnosis
+    diagnosis_path = Path(
+        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
+    )
+    patient_data = pd.read_csv(diagnosis_path, names=["pid", "disease"])
+
+    # load file annotations
+    raw_audio_path = Path(
+        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
+    )
+    audio_annotations = load_audio_annotations(raw_audio_path)
+
+    patient_data["pid"] = patient_data["pid"].astype("int32")
+    audio_annotations["pid"] = audio_annotations["pid"].astype("int32")
+    demographic_data["pid"] = demographic_data["pid"].astype("int32")
+
+    audio_data = pd.merge(audio_annotations, patient_data, on="pid")
+    allfactors_data = pd.merge(audio_data, demographic_data, on="pid")
+
+    # Save tabular data in cache
+    save_path = Path("../preprocessed_data/")
+    save_path.mkdir(parents=True, exist_ok=True)
+    allfactors_data.to_csv(save_path / "raw_tabular_data.csv", index=False)
+
+    return allfactors_data
