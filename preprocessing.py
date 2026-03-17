@@ -7,6 +7,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
 
 #load data
 class DataLoader(BaseEstimator, TransformerMixin):
@@ -171,8 +172,6 @@ class FeatureConstructor(BaseEstimator, TransformerMixin):
         X['bmi'] = X.apply(calculate_bmi, axis=1)
         X = X.drop(columns=['adult_bmi', 'child_weight', 'child_height', 'start', 'end'])
         return X
-
-
 def calculate_bmi(row):
     """
     Calculate a normalised BMI percentage for a patient row.
@@ -235,12 +234,7 @@ def calculate_bmi(row):
 
     return np.nan
 
-
-
-
-
-
-
+#impute age, bmi, sex
 class Imputer(BaseEstimator, TransformerMixin):
     """
     Imputes missing values for age, bmi and sex.
@@ -274,4 +268,35 @@ class Imputer(BaseEstimator, TransformerMixin):
         X = X.copy()
         X[['age', 'bmi']] = self.mean_imputer.transform(X[['age', 'bmi']])
         X[['sex']] = self.mode_imputer.transform(X[['sex']])
+        return X
+
+
+#scale age, bmi, cycle length
+class Scaler(BaseEstimator, TransformerMixin):
+    """
+    Applies standard scaling to continuous features: age, bmi, cycle_length.
+
+    Scales to zero mean and unit variance.
+    Must run after train/test split to avoid data leakage.
+    Fit on training data only, then transform both train and test.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    pd.DataFrame with scaled continuous features.
+    """
+
+    def __init__(self):
+        self.scaler = StandardScaler()
+
+    def fit(self, X, y=None):
+        self.scaler.fit(X[['age', 'bmi', 'cycle_length']])
+        return self
+
+    def transform(self, X, y=None):
+        X = X.copy()
+        X[['age', 'bmi', 'cycle_length']] = self.scaler.transform(X[['age', 'bmi', 'cycle_length']])
         return X
