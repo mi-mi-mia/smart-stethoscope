@@ -1,7 +1,6 @@
 # ================================
 # Imports
 # ================================
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
@@ -10,19 +9,17 @@ from sklearn.metrics import accuracy_score, classification_report
 # ================================
 # Baseline training function
 # ================================
-def run_logistic_baseline(df, target_col="disease", patient_col="patient_id"):
+def run_logistic_baseline(train_df, test_df, target_col="disease", patient_col="patient_id"):
     """
     Train and evaluate a multiclass logistic regression model
-    using a patient-level train/test split to avoid leakage.
+    using pre-split train and test data.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Clean modelling dataframe containing:
-        - target column
-        - patient_id column
-        - file_name column (optional, dropped if present)
-        - all feature columns already numeric
+    train_df : pd.DataFrame
+        Training dataframe
+    test_df : pd.DataFrame
+        Test dataframe
     target_col : str
         Name of target column
     patient_col : str
@@ -44,33 +41,27 @@ def run_logistic_baseline(df, target_col="disease", patient_col="patient_id"):
     # Define features
     # Drop target and identifier columns
     # -----------------------------
-    cols_to_drop = [target_col, patient_col]
+    cols_to_drop = [target_col]
 
-    # Drop file_name too if it exists, because it is an identifier not a feature
-    if "file_name" in df.columns:
+    # Drop patient_id if present
+    if patient_col in train_df.columns:
+        cols_to_drop.append(patient_col)
+
+    # Drop filename too if present
+    if "file_name" in train_df.columns:
         cols_to_drop.append("file_name")
 
-    X = df.drop(columns=cols_to_drop)
+    if "filename" in train_df.columns:
+        cols_to_drop.append("filename")
 
+   # -----------------------------
+    # Define features and target
     # -----------------------------
-    # Patient-level train/test split
-    # -----------------------------
-    unique_patients = df[patient_col].unique()
+    X_train = train_df.drop(columns=cols_to_drop)
+    y_train = train_df[target_col]
 
-    train_patients, test_patients = train_test_split(
-        unique_patients,
-        test_size=0.2,
-        random_state=42
-    )
-
-    # Boolean masks used to keep all rows for a patient together
-    train_mask = df[patient_col].isin(train_patients)
-    test_mask = df[patient_col].isin(test_patients)
-
-    X_train = X[train_mask]
-    X_test = X[test_mask]
-    y_train = y[train_mask]
-    y_test = y[test_mask]
+    X_test = test_df.drop(columns=cols_to_drop)
+    y_test = test_df[target_col]
 
     # -----------------------------
     # Scale numeric features
