@@ -1,3 +1,4 @@
+# first version (from vlad for images)
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
@@ -37,7 +38,7 @@ async def receive_image(img: UploadFile=File(...)):
     im = cv2.imencode('.png', annotated_img)[1] # extension depends on which format is sent from Streamlit
     return Response(content=im.tobytes(), media_type="image/png")
 
-### trying to figure out what does what
+### second version
 
 from typing import Annotated
 
@@ -45,7 +46,7 @@ from fastapi import FastAPI, File, UploadFile
 
 app = FastAPI()
 
-
+#i think this turns the file into bytes which we dont need
 @app.post("/files/")
 async def create_file(file: Annotated[bytes, File()]):
     return {"file_size": len(file)}
@@ -55,7 +56,7 @@ async def create_file(file: Annotated[bytes, File()]):
 async def create_upload_file(file: UploadFile):
     return {"filename": file.filename}
 
-###same
+### third version
 
 from fastapi import File, UploadFile, HTTPException
 
