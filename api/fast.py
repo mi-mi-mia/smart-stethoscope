@@ -51,7 +51,7 @@ app = FastAPI()
 async def create_file(file: Annotated[bytes, File()]):
     return {"file_size": len(file)}
 
-
+# this we can use to check if the upload worked i think
 @app.post("/uploadfile/")
 async def create_upload_file(file: UploadFile):
     return {"filename": file.filename}
@@ -59,7 +59,7 @@ async def create_upload_file(file: UploadFile):
 ### third version
 
 from fastapi import File, UploadFile, HTTPException
-
+# i dont know what the while stuff does yet
 @app.post("/upload")
 def upload(file: UploadFile = File(...)):
     try:
