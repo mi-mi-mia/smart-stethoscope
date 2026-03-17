@@ -1,8 +1,8 @@
-import os
 from pathlib import Path
 import pandas as pd
 import librosa as lb
 import soundfile as sf
+from params import *
 
 
 def cut_audio_data(raw_data, start, end, sr=22050):
@@ -30,7 +30,7 @@ def cut_audio_data(raw_data, start, end, sr=22050):
     return raw_data[start_ind:end_ind]
 
 
-def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
+def load_audio_annotations() -> pd.DataFrame:
     """
     Takes the path to the raw audio annotation folder. Returns the annotations
     of all annotation files in the folder as a dataframe including the information
@@ -46,7 +46,7 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
     annotapd.dataFrame : DataFrame of all audio annotations.
     """
     files_data = []
-    for file in raw_audio_path.glob("*.txt"):
+    for file in RAW_AUDIO_PATH.glob("*.txt"):
         df = pd.read_csv(
             file,
             sep="\t",
@@ -71,14 +71,9 @@ def extract_breathing_cycles():
     annotation and saves as a new .wav file.
     """
 
-    preproc_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
-    raw_audio_path = Path(
-        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
-    )
+    PREPROCESSED_AUDIO_PATH.mkdir(parents=True, exist_ok=True)
 
-    Path(preproc_audio_path).mkdir(parents=True, exist_ok=True)
-
-    annotation_data = load_audio_annotations(raw_audio_path)
+    annotation_data = load_audio_annotations(RAW_AUDIO_PATH)
     # Drop unused columns
     annotation_data = annotation_data[["start", "end", "filename"]]
 
@@ -86,8 +81,8 @@ def extract_breathing_cycles():
     annotation_data["cycle"] = annotation_data.groupby("filename").cumcount()
 
     for row in annotation_data.itertuples(index=False):
-        audio_file = raw_audio_path / f"{row.filename}.wav"
-        save_file = preproc_audio_path / f"{row.filename}_{row.cycle}.wav"
+        audio_file = RAW_AUDIO_PATH / f"{row.filename}.wav"
+        save_file = PREPROCESSED_AUDIO_PATH / f"{row.filename}_{row.cycle}.wav"
 
         audio, sr = lb.load(audio_file)
         breathing_cycle = cut_audio_data(audio, row.start, row.end, sr)
@@ -98,6 +93,7 @@ def extract_breathing_cycles():
 
 
 def load_tabular_data():
+    # TODO: Add a check if preprocessed data already exists, then load this file
     # load demographic data
     demographic_data_path = Path("../raw_data/demographic_info.txt")
     demographic_data = pd.read_csv(
@@ -132,3 +128,13 @@ def load_tabular_data():
     allfactors_data.to_csv(save_path / "raw_tabular_data.csv", index=False)
 
     return allfactors_data
+
+
+def load_data():
+    if not any(PREPROCESSED_AUDIO_PATH.glob("*.wav")):
+        extract_breathing_cycles()
+    else:
+        print("✅ Processed audio files already exist, skipping extraction")
+
+    raw_tabular_data = load_tabular_data()
+    return raw_tabular_data
