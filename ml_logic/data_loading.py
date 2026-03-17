@@ -5,9 +5,9 @@ import librosa as lb
 import soundfile as sf
 
 
-def cut_data_into_breathing_cycle(raw_data, start, end, sr=22050):
+def cut_audio_data(raw_data, start, end, sr=22050):
     """
-    Takes a numpy array of raw audio data and spilts it using start and end arguments.
+    Takes a numpy array of raw audio data and cuts it using start and end arguments.
 
     raw_data=numpy array of audio sample
     start=time
@@ -71,7 +71,7 @@ def extract_breathing_cycles():
         save_file = preproc_audio_path / f"{row.filename}_{row.cycle}.wav"
 
         audio, sr = lb.load(audio_file)
-        breathing_cycle = cut_data_into_breathing_cycle(audio, row.start, row.end, sr)
+        breathing_cycle = cut_audio_data(audio, row.start, row.end, sr)
 
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
 
