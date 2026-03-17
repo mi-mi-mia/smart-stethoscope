@@ -5,9 +5,9 @@ import librosa as lb
 import soundfile as sf
 
 
-def get_breathing_cycle(raw_data, start, end, sr=22050):
+def cut_data_into_breathing_cycle(raw_data, start, end, sr=22050):
     """
-    Takes a numpy array of audio data and spilts it using start and end arguments.
+    Takes a numpy array of raw audio data and spilts it using start and end arguments.
 
     raw_data=numpy array of audio sample
     start=time
@@ -51,8 +51,7 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
 def extract_breathing_cycles():
     """
     Extracts all breathing cycles from all audio files in the raw_data folder according
-    to their annotation file.
-    and saves the breathing cycles in preprocessed_data.
+    to their annotation files and saves the breathing cycles in preprocessed_data folder.
     """
 
     preproc_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
@@ -72,7 +71,7 @@ def extract_breathing_cycles():
         save_file = preproc_audio_path / f"{row.filename}_{row.cycle}.wav"
 
         audio, sr = lb.load(audio_file)
-        breathing_cycle = get_breathing_cycle(audio, row.start, row.end, sr)
+        breathing_cycle = cut_data_into_breathing_cycle(audio, row.start, row.end, sr)
 
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
 
