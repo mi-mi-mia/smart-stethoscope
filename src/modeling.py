@@ -64,15 +64,6 @@ def run_logistic_baseline(train_df, test_df, target_col="disease", patient_col="
     y_test = test_df[target_col]
 
     # -----------------------------
-    # Scale numeric features
-    # Fit on train only to avoid leakage
-    # -----------------------------
-    scaler = StandardScaler()
-
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    # -----------------------------
     # Train model
     # -----------------------------
     model = LogisticRegression(
