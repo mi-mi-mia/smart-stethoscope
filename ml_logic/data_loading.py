@@ -105,8 +105,28 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
     )
 
 
-def load_tabular_data() -> pd.DataFrame:
-    # TODO: Add a check if preprocessed data already exists, then load this file
+def load_tabular_data(
+    demographic_data_path: Path, diagnosis_path: Path, raw_audio_path: Path
+) -> pd.DataFrame:
+    """
+    Loads patient demographics, patient diagnosis, and audio annotations.
+    If it already exists, loads from cach, else from raw data.
+
+    Parameters
+    ----------
+    demographic_data_path : Path
+        Path to the to the demographic data file
+    diagnosis_path : Path
+        Path to the to the diagnosis data file
+    raw_audio_path : Path
+        Path to the folder where all the raw audio files are
+
+    Returns
+    -------
+    allfactors_data : DataFrame
+        Data frame of all raw tabular data.
+    """
+
     cache_path = Path("../preprocessed_data/")
     cache_file = cache_path / "raw_tabular_data.csv"
     if cache_file.is_file():
@@ -116,7 +136,6 @@ def load_tabular_data() -> pd.DataFrame:
     else:
         print(Fore.BLUE + "\nLoad data from raw data folder..." + Style.RESET_ALL)
         # load demographic data
-        demographic_data_path = Path("../raw_data/demographic_info.txt")
         demographic_data = pd.read_csv(
             demographic_data_path,
             sep=" ",
@@ -125,15 +144,10 @@ def load_tabular_data() -> pd.DataFrame:
         )
 
         # load patient diagnosis
-        diagnosis_path = Path(
-            "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
-        )
+
         patient_data = pd.read_csv(diagnosis_path, names=["pid", "disease"])
 
         # load file annotations
-        raw_audio_path = Path(
-            "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
-        )
         audio_annotations = load_audio_annotations(raw_audio_path)
 
         patient_data["pid"] = patient_data["pid"].astype("int32")
@@ -158,13 +172,18 @@ def load_data() -> pd.DataFrame:
     Returns
     -------
     raw_tabular_data : DataFrame
-    Data frame of all raw tabular data.
+        Data frame of all raw tabular data.
     """
 
     preprocessed_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
     raw_audio_path = Path(
         "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
     )
+    diagnosis_path = Path(
+        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
+    )
+    demographic_data_path = Path("../raw_data/demographic_info.txt")
+
     if not any(preprocessed_audio_path.glob("*.wav")):
         extract_breathing_cycles(
             raw_audio_path=raw_audio_path,
@@ -177,5 +196,7 @@ def load_data() -> pd.DataFrame:
             + Style.RESET_ALL
         )
 
-    raw_tabular_data = load_tabular_data()
+    raw_tabular_data = load_tabular_data(
+        demographic_data_path, diagnosis_path, raw_audio_path
+    )
     return raw_tabular_data
