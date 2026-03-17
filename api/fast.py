@@ -51,7 +51,8 @@ app = FastAPI()
 async def create_file(file: Annotated[bytes, File()]):
     return {"file_size": len(file)}
 
-# this we can use to check if the upload worked i think
+# this we can use to check if the upload worked i think, also need a way to input
+# the demographic_data
 @app.post("/uploadfile/")
 async def create_upload_file(file: UploadFile):
     return {"filename": file.filename}
