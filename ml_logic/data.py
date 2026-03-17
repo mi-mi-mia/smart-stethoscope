@@ -5,79 +5,75 @@ import librosa as lb
 import soundfile as sf
 
 
-def preprocess_audio_data():
+def get_breathing_cycle(raw_data, start, end, sr=22050):
+    """
+    Takes a numpy array of audio data and spilts it using start and end arguments.
 
-    def getPureSample(raw_data, start, end, sr=22050):
-        """
-        Takes a numpy array of audio data and spilts it using start and end arguments.
+    raw_data=numpy array of audio sample
+    start=time
+    end=time
+    sr=sampling_rate
+    """
+    max_ind = len(raw_data)
+    start_ind = min(int(start * sr), max_ind)
+    end_ind = min(int(end * sr), max_ind)
+    return raw_data[start_ind:end_ind]
 
-        raw_data=numpy array of audio sample
-        start=time
-        end=time
-        sr=sampling_rate
-        """
-        max_ind = len(raw_data)
-        start_ind = min(int(start * sr), max_ind)
-        end_ind = min(int(end * sr), max_ind)
-        return raw_data[start_ind:end_ind]
 
-    def get_audio_annotation_data(raw_audio_path):
-        """
-        Takes the path to the raw audio annotation folder. Returns the annotations
-        of all annotation files in the folder as a dataframe.
+def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
+    """
+    Takes the path to the raw audio annotation folder. Returns the annotations
+    of all annotation files in the folder as a dataframe.
 
-        raw_audio_path=path to the folder where all the raw audio annotation files are
+    raw_audio_path=path to the folder where all the raw audio annotation files are
 
-        Returns:
-        annotation_data = DataFrame of all audio annotations.
-        """
-        annotation_files = [
-            file.split(".")[0]
-            for file in os.listdir(raw_audio_path)
-            if file.endswith(".txt")
-        ]
+    Returns:
+    annotation_data = DataFrame of all audio annotations.
+    """
+    files_data = []
+    for file in raw_audio_path.glob("*.txt"):
+        df = pd.read_csv(
+            file,
+            sep="\t",
+            names=["start", "end", "crackles", "wheezes"],
+        )
+        df["filename"] = file.stem
+        files_data.append(df)
 
-        files_data = []
-        for file in annotation_files:
-            data = pd.read_csv(
-                raw_audio_path + file + ".txt",
-                sep="\t",
-                names=["start", "end", "crackles", "weezels"],
-            )
-            data["filename"] = file
-            files_data.append(data)
-        annotation_data = pd.concat(files_data)
-        annotation_data.drop(columns=["crackles", "weezels"])
-        return annotation_data.reset_index()
+    annotation_data = pd.concat(files_data, ignore_index=True)
 
-    preproc_audio_path = "../preprocessed_data/audio_breathing_cycles/"
-    raw_audio_path = "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
+    # Drop unused columns
+    annotation_data = annotation_data.drop(columns=["crackles", "wheezes"])
+
+    return annotation_data
+
+
+def extract_breathing_cycles():
+    """
+    Extracts all breathing cycles from all audio files in the raw_data folder according
+    to their annotation file.
+    and saves the breathing cycles in preprocessed_data.
+    """
+
+    preproc_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
+    raw_audio_path = Path(
+        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
+    )
 
     Path(preproc_audio_path).mkdir(parents=True, exist_ok=True)
 
-    annotation_data = get_audio_annotation_data(raw_audio_path)
+    annotation_data = load_audio_annotations(raw_audio_path)
 
-    i, c = 0, 0
-    for index, row in annotation_data.iterrows():
-        start = row["start"]
-        end = row["end"]
-        filename = row["filename"]
+    # Create cycle index per file
+    annotation_data["cycle"] = annotation_data.groupby("filename").cumcount()
 
-        audio_file_loc = raw_audio_path + filename + ".wav"
+    for row in annotation_data.itertuples(index=False):
+        audio_file = raw_audio_path / f"{row.filename}.wav"
+        save_file = preproc_audio_path / f"{row.filename}_{row.cycle}.wav"
 
-        if index > 0:
-            # check if more cycles exits for same patient if so then add i to change filename
-            if annotation_data.iloc[index - 1]["filename"] == filename:
-                i += 1
-            else:
-                i = 0
-        filename = filename + "_" + str(i) + ".wav"
+        audio, sr = lb.load(audio_file)
+        breathing_cycle = get_breathing_cycle(audio, row.start, row.end, sr)
 
-        save_path = preproc_audio_path + filename
-        c += 1
+        sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
 
-        audioArr, sampleRate = lb.load(audio_file_loc)
-        pureSample = getPureSample(audioArr, start, end, sampleRate)
-
-        sf.write(file=save_path, data=pureSample, samplerate=sampleRate)
-    print("Total Files Processed: ", c)
+    print(f"✅ Processed {len(annotation_data)} audio files")
