@@ -33,7 +33,8 @@ def cut_audio_data(raw_data, start, end, sr=22050):
 def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
     """
     Takes the path to the raw audio annotation folder. Returns the annotations
-    of all annotation files in the folder as a dataframe.
+    of all annotation files in the folder as a dataframe including the information
+    from the file name.
 
     raw_audio_path=path to the folder where all the raw audio annotation files are
 
@@ -48,12 +49,12 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
             names=["start", "end", "crackles", "wheezes"],
         )
         df["filename"] = file.stem
+        parts = file.stem.split("_")
+        df["pid"] = int(parts[0])
+        df["chest_location"] = parts[2]
         files_data.append(df)
 
     annotation_data = pd.concat(files_data, ignore_index=True)
-
-    # Drop unused columns
-    annotation_data = annotation_data.drop(columns=["crackles", "wheezes"])
 
     return annotation_data
 
@@ -74,6 +75,8 @@ def extract_breathing_cycles():
     Path(preproc_audio_path).mkdir(parents=True, exist_ok=True)
 
     annotation_data = load_audio_annotations(raw_audio_path)
+    # Drop unused columns
+    annotation_data = annotation_data[["start", "end", "filename"]]
 
     # Create cycle index per file
     annotation_data["cycle"] = annotation_data.groupby("filename").cumcount()
