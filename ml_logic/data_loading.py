@@ -7,12 +7,22 @@ import soundfile as sf
 
 def cut_audio_data(raw_data, start, end, sr=22050):
     """
-    Takes a numpy array of raw audio data and cuts it using start and end arguments.
+    Slices a numpy array of audio data using start and end timestamps.
 
-    raw_data=numpy array of audio sample
-    start=time
-    end=time
-    sr=sampling_rate
+    Parameters
+    ----------
+    raw_data : np.array
+        Numpy array of audio sample
+    start : float
+        Start time in seconds
+    end : float
+        End time in seconds
+    sr : int
+        Sampling rate (default 22050)
+
+    Returns
+    -------
+    np.array : sliced audio data
     """
     max_ind = len(raw_data)
     start_ind = min(int(start * sr), max_ind)
@@ -50,8 +60,10 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
 
 def extract_breathing_cycles():
     """
-    Extracts all breathing cycles from all audio files in the raw_data folder according
-    to their annotation files and saves the breathing cycles in preprocessed_data folder.
+    Extracts and saves individual breathing cycles from raw audio files.
+
+    Slices each breathing cycle from the raw .wav file according to its
+    annotation and saves as a new .wav file.
     """
 
     preproc_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
