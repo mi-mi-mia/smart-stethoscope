@@ -8,73 +8,44 @@ from sklearn.metrics import accuracy_score, classification_report
 # ================================
 # Baseline training function
 # ================================
-def run_logistic_baseline(train_df, test_df, target_col="disease", patient_col="patient_id"):
+def run_logistic_baseline(X_train, X_test, y_train, y_test):
     """
     Train and evaluate a multiclass logistic regression model
-    using scaled and pre-split train and test data.
+    using already-preprocessed train and test data.
 
     Parameters
     ----------
-    train_df : pd.DataFrame
-        Training dataframe
-    test_df : pd.DataFrame
-        Test dataframe
-    target_col : str
-        Name of target column
-    patient_col : str
-        Name of patient identifier column
+    X_train : pd.DataFrame
+        Preprocessed training features
+    X_test : pd.DataFrame
+        Preprocessed test features
+    y_train : pd.Series
+        Training target
+    y_test : pd.Series
+        Test target
 
     Returns
     -------
     model : trained LogisticRegression model
-    X_train, X_test, y_train, y_test, y_pred : useful outputs for later inspection
+    y_pred : np.ndarray
+        Predicted labels for X_test
     """
-
-    # -----------------------------
-    # Define target
-    # -----------------------------
-    y = df[target_col]
-
-    # -----------------------------
-    # Define features
-    # Drop target and identifier columns
-    # -----------------------------
-    cols_to_drop = [target_col]
-
-    # Drop patient_id if present
-    if patient_col in train_df.columns:
-        cols_to_drop.append(patient_col)
-
-    # Drop filename too if present
-    if "file_name" in train_df.columns:
-        cols_to_drop.append("file_name")
-
-    if "filename" in train_df.columns:
-        cols_to_drop.append("filename")
-
-   # -----------------------------
-    # Define features and target
-    # -----------------------------
-    X_train = train_df.drop(columns=cols_to_drop)
-    y_train = train_df[target_col]
-
-    X_test = test_df.drop(columns=cols_to_drop)
-    y_test = test_df[target_col]
 
     # -----------------------------
     # Train model
     # -----------------------------
     model = LogisticRegression(
         max_iter=2000,
-        class_weight="balanced"
+        class_weight="balanced",
+        random_state=42
     )
 
-    model.fit(X_train_scaled, y_train)
+    model.fit(X_train, y_train)
 
     # -----------------------------
     # Predict
     # -----------------------------
-    y_pred = model.predict(X_test_scaled)
+    y_pred = model.predict(X_test)
 
     # -----------------------------
     # Evaluate
@@ -85,4 +56,4 @@ def run_logistic_baseline(train_df, test_df, target_col="disease", patient_col="
     # -----------------------------
     # Return useful objects
     # -----------------------------
-    return model, scaler, X_train, X_test, y_train, y_test, y_pred
+    return model, y_pred
