@@ -1,8 +1,9 @@
 # main.py
-# imports
+#imports
 from data import DataLoader, stratified_group_split, extract_breathing_cycles
 from preprocessing import FeatureEncoder, FeatureConstructor, Imputer, Scaler
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder
 from pathlib import Path
 
 # paths
@@ -30,12 +31,13 @@ data = pre_split_pipeline.fit_transform(None)
 train_data, test_data = stratified_group_split(data)
 
 # step 4 - separate X and y
-disease_cols = [col for col in train_data.columns if col.startswith('disease_')]
+le = LabelEncoder()
 
-X_train = train_data.drop(columns=disease_cols)
-y_train = train_data[disease_cols]
-X_test = test_data.drop(columns=disease_cols)
-y_test = test_data[disease_cols]
+X_train = train_data.drop(columns=['disease'])
+y_train = le.fit_transform(train_data['disease'])
+
+X_test = test_data.drop(columns=['disease'])
+y_test = le.transform(test_data['disease'])  # from test_data, not X_test
 
 # step 5 - post split pipeline - fit on train only
 post_split_pipeline = Pipeline([

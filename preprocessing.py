@@ -15,7 +15,7 @@ class FeatureEncoder(BaseEstimator, TransformerMixin):
 
     Steps:
     - Label encodes sex (M=0, F=1)
-    - One hot encodes disease and chest_location
+    - One hot encodes chest_location
 
     Returns
     -------
@@ -27,7 +27,12 @@ class FeatureEncoder(BaseEstimator, TransformerMixin):
         self.le = LabelEncoder()
 
     def fit(self, X, y=None):
-        self.ohe.fit(X[['disease', 'chest_location']])
+        self.ohe.fit(X['chest_location'])
+        self.le.fit(X['sex'])
+        return self
+
+    def fit(self, X, y=None):
+        self.ohe.fit(X[['chest_location']])  # double brackets
         self.le.fit(X['sex'])
         return self
 
@@ -36,18 +41,17 @@ class FeatureEncoder(BaseEstimator, TransformerMixin):
 
         X['sex'] = self.le.transform(X['sex'])
 
-        encoded = self.ohe.transform(X[['disease', 'chest_location']])
+        encoded = self.ohe.transform(X[['chest_location']])  # double brackets
         encoded_df = pd.DataFrame(
             encoded,
-            columns=self.ohe.get_feature_names_out(['disease', 'chest_location']),
+            columns=self.ohe.get_feature_names_out(['chest_location']),
             index=X.index
         )
 
         X = pd.concat([X, encoded_df], axis=1)
-        X = X.drop(columns=['disease', 'chest_location'])
+        X = X.drop(columns=['chest_location'])
 
         return X
-
 
 def calculate_bmi(row):
     """
