@@ -129,7 +129,7 @@ def load_tabular_data(
         Data frame of all raw tabular data.
     """
 
-    cache_path = Path("../preprocessed_data/")
+    cache_path = Path("preprocessed_data/")
     cache_file = cache_path / "raw_tabular_data.csv"
     if cache_file.is_file():
         print(Fore.BLUE + "\nLoad data from cached CSV..." + Style.RESET_ALL)
@@ -158,6 +158,7 @@ def load_tabular_data(
 
         audio_data = pd.merge(audio_annotations, patient_data, on="pid")
         allfactors_data = pd.merge(audio_data, demographic_data, on="pid")
+        allfactors_data = allfactors_data.drop(columns=['pid'])  # add here
 
         # Save tabular data in cache
         cache_path.mkdir(parents=True, exist_ok=True)

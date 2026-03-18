@@ -201,10 +201,12 @@ def stratified_group_split(data, test_size=0.2, random_state=42):
     Splits at patient level so no patient appears in both train and test,
     while preserving disease class proportions across the split.
 
+    Extracts pid temporarily from cycle_filename for splitting purposes.
+
     Parameters
     ----------
     data : pd.DataFrame
-        Preprocessed dataframe containing 'pid' and 'disease' columns.
+        Preprocessed dataframe containing 'cycle_filename' and 'disease' columns.
     test_size : float
         Proportion of patients to include in test set.
     random_state : int
@@ -212,16 +214,25 @@ def stratified_group_split(data, test_size=0.2, random_state=42):
     Returns
     -------
     train_data, test_data : pd.DataFrame
-    train_pids, test_pids : np.ndarray
+    train_cycle_filenames, test_cycle_filenames : np.ndarray
     """
+    # Extract pid temporarily for patient-level split
+    data = data.copy()
+    data['pid'] = data['cycle_filename'].str.split('_').str[0].astype(int)
+
     patient_diseases = data.groupby('pid')['disease'].first().reset_index()
     sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
     train_idx, test_idx = next(sss.split(patient_diseases['pid'], patient_diseases['disease']))
     train_pids = patient_diseases.iloc[train_idx]['pid'].values
     test_pids = patient_diseases.iloc[test_idx]['pid'].values
-    train_data = data[data['pid'].isin(train_pids)].reset_index(drop=True)
-    test_data = data[data['pid'].isin(test_pids)].reset_index(drop=True)
-    return train_data, test_data, train_pids, test_pids
+
+    train_data = data[data['pid'].isin(train_pids)].drop(columns=['pid']).reset_index(drop=True)
+    test_data = data[data['pid'].isin(test_pids)].drop(columns=['pid']).reset_index(drop=True)
+
+    train_cycle_filenames = train_data['cycle_filename'].values
+    test_cycle_filenames = test_data['cycle_filename'].values
+
+    return train_data, test_data, train_cycle_filenames, test_cycle_filenames
 
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
@@ -249,7 +260,7 @@ def preprocess_tabular_data(data, pipeline_save_path=None):
     -------
     X_train, X_test : pd.DataFrame
     y_train, y_test : pd.Series
-    train_pids, test_pids : np.ndarray
+    train_cycle_filenames, test_cycle_filenames : np.ndarray
     """
     pre_split_pipeline = Pipeline([
         ('encode', ColumnEncoder()),
@@ -265,12 +276,12 @@ def preprocess_tabular_data(data, pipeline_save_path=None):
     data = pre_split_pipeline.fit_transform(data)
 
     # 2. Train/test split at patient level
-    train_data, test_data, train_pids, test_pids = stratified_group_split(data)
+    train_data, test_data, train_cycle_filenames, test_cycle_filenames = stratified_group_split(data)
 
     # 3. Separate features and target
-    X_train = train_data.drop(columns=['disease', 'pid'])
+    X_train = train_data.drop(columns=['disease', 'cycle_filename'])
     y_train = train_data['disease']
-    X_test = test_data.drop(columns=['disease', 'pid'])
+    X_test = test_data.drop(columns=['disease', 'cycle_filename'])
     y_test = test_data['disease']
 
     # 4. Post-split: fit on train, transform both
@@ -282,4 +293,4 @@ def preprocess_tabular_data(data, pipeline_save_path=None):
         Path(pipeline_save_path).parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(post_split_pipeline, pipeline_save_path)
 
-    return X_train, X_test, y_train, y_test, train_pids, test_pids #to do change pids to be cycle file name and check how order is preserved
+    return X_train, X_test, y_train, y_test, train_cycle_filenames, test_cycle_filenames
