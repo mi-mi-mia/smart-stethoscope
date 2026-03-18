@@ -1,5 +1,7 @@
+import librosa
 import numpy as np
 import pandas as pd
+from scipy.stats import skew
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.pipeline import Pipeline
@@ -288,14 +290,13 @@ def preprocess_tabular_data(data, pipeline_save_path=None):
 # ==========================
 def extract_mfcc_features(df, audio_folder, n_mfcc=13):
     """
-    Extract MFCC summary features for each filename in df.
-    Assumes df has 'filename' column and corresponding .wav files exist.
-    Calculates mean, std, skew and max.
+    Extract MFCC summary features for each breathing cycle in df.
+    Assumes df has 'cycle_filename' column and corresponding .wav files exist.
     """
     mfcc_rows = []
 
-    for filename in df["filename"]:
-        file_path = Path(audio_folder) / f"{filename}.wav"
+    for cycle_filename in df["cycle_filename"]:
+        file_path = Path(audio_folder) / f"{cycle_filename}.wav"
 
         signal, sample_rate = librosa.load(file_path, sr=None)
 
@@ -312,9 +313,9 @@ def extract_mfcc_features(df, audio_folder, n_mfcc=13):
 
         combined = np.concatenate([mfcc_mean, mfcc_std, mfcc_skew, mfcc_max])
 
-        mfcc_rows.append([filename] + list(combined))
+        mfcc_rows.append([cycle_filename] + list(combined))
 
-    columns = ["filename"]
+    columns = ["cycle_filename"]
 
     for i in range(1, n_mfcc + 1):
         columns.append(f"mfcc_{i}_mean")
