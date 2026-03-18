@@ -1,8 +1,9 @@
 from pathlib import Path
+from colorama import Fore, Style
 import pandas as pd
 import librosa as lb
 import soundfile as sf
-from colorama import Fore, Style
+from smart_stethoscope.params import *
 
 
 def cut_audio_data(raw_data, start, end, sr=22050):
@@ -95,8 +96,12 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
         audio_file = raw_audio_path / f"{row.filename}.wav"
         save_file = preprocessed_audio_path / f"{row.cycle_filename}.wav"
 
-        audio, sr = lb.load(audio_file)
-        breathing_cycle = cut_audio_data(audio, row.start, row.end, sr)
+        audio, sr = lb.load(audio_file, sr=None)
+        audio = lb.resample(audio, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE)
+
+        breathing_cycle = cut_audio_data(
+            audio, row.start, row.end, TARGET_SAMPLING_RATE
+        )
 
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
 
@@ -129,7 +134,7 @@ def load_tabular_data(
         Data frame of all raw tabular data.
     """
 
-    cache_path = Path("../preprocessed_data/")
+    cache_path = CACHE_PATH
     cache_file = cache_path / "raw_tabular_data.csv"
     if cache_file.is_file():
         print(Fore.BLUE + "\nLoad data from cached CSV..." + Style.RESET_ALL)
@@ -158,6 +163,7 @@ def load_tabular_data(
 
         audio_data = pd.merge(audio_annotations, patient_data, on="pid")
         allfactors_data = pd.merge(audio_data, demographic_data, on="pid")
+        allfactors_data = allfactors_data.drop(columns=["pid"])  # add here
 
         # Save tabular data in cache
         cache_path.mkdir(parents=True, exist_ok=True)
@@ -177,14 +183,10 @@ def load_data() -> pd.DataFrame:
         Data frame of all raw tabular data.
     """
 
-    preprocessed_audio_path = Path("preprocessed_data/audio_breathing_cycles/")
-    raw_audio_path = Path(
-        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
-    )
-    diagnosis_path = Path(
-        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
-    )
-    demographic_data_path = Path("raw_data/demographic_info.txt")
+    preprocessed_audio_path = PREPROCESSED_AUDIO_PATH
+    raw_audio_path = RAW_AUDIO_PATH
+    diagnosis_path = DIAGNOSIS_PATH
+    demographic_data_path = DEMOGRAPHIC_DATA_PATH
 
     if not any(preprocessed_audio_path.glob("*.wav")):
         extract_breathing_cycles(
