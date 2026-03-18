@@ -2,16 +2,7 @@ from pathlib import Path
 import pandas as pd
 import librosa as lb
 import soundfile as sf
-
-try:
-    from colorama import Fore, Style
-except ImportError:
-    class _NoColor:
-        BLUE = ""
-        RESET_ALL = ""
-
-    Fore = _NoColor()
-    Style = _NoColor()
+from colorama import Fore, Style
 
 
 def cut_audio_data(raw_data, start, end, sr=22050):
