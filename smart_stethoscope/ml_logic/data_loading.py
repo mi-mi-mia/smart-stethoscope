@@ -60,6 +60,12 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
         files_data.append(df)
 
     annotation_data = pd.concat(files_data, ignore_index=True)
+    # Create cycle filename
+    annotation_data["cycle_filename"] = (
+        annotation_data["filename"].astype(str)
+        + "_"
+        + annotation_data.groupby("filename").cumcount().astype(str)
+    )
 
     return annotation_data
 
@@ -83,16 +89,11 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
     preprocessed_audio_path.mkdir(parents=True, exist_ok=True)
 
     annotation_data = load_audio_annotations(raw_audio_path)
-    # Drop unused columns
-    annotation_data = annotation_data[["start", "end", "filename"]]
-
-    # Create cycle index per file
-    annotation_data["cycle"] = annotation_data.groupby("filename").cumcount()
 
     print(Fore.BLUE + "\nExtracting respiratory cycles from audio..." + Style.RESET_ALL)
     for row in annotation_data.itertuples(index=False):
         audio_file = raw_audio_path / f"{row.filename}.wav"
-        save_file = preprocessed_audio_path / f"{row.filename}_{row.cycle}.wav"
+        save_file = preprocessed_audio_path / f"{row.cycle_filename}.wav"
 
         audio, sr = lb.load(audio_file)
         breathing_cycle = cut_audio_data(audio, row.start, row.end, sr)
@@ -176,14 +177,14 @@ def load_data() -> pd.DataFrame:
         Data frame of all raw tabular data.
     """
 
-    preprocessed_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
+    preprocessed_audio_path = Path("preprocessed_data/audio_breathing_cycles/")
     raw_audio_path = Path(
-        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
+        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
     )
     diagnosis_path = Path(
-        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
+        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
     )
-    demographic_data_path = Path("../raw_data/demographic_info.txt")
+    demographic_data_path = Path("raw_data/demographic_info.txt")
 
     if not any(preprocessed_audio_path.glob("*.wav")):
         extract_breathing_cycles(
