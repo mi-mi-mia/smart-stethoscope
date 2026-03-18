@@ -1,7 +1,6 @@
 # ================================
 # Imports
 # ================================
-from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 
@@ -28,7 +27,6 @@ def run_logistic_baseline(train_df, test_df, target_col="disease", patient_col="
     Returns
     -------
     model : trained LogisticRegression model
-    scaler : fitted StandardScaler
     X_train, X_test, y_train, y_test, y_pred : useful outputs for later inspection
     """
 
