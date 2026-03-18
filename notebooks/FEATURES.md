@@ -6,7 +6,7 @@ This document serves as reference for the features extracted from the respirator
 * **Resampling:** 22,050 Hz.
 * **Temporal Formatting/Standardization:** 6-second standardized windows (aligned w breathing cycles).
 * **Peak Normalization:** Amplitude scaled to 1.0. TBC
-* **Statistical Aggregation:** Each spectral/temporal feature is summarized by its **Mean**, **Standard Deviation**, and **Skewness**?? (double check this one) across the 6-second window. TBC
+TBC * **Statistical Aggregation:** Each spectral/temporal feature is summarized by its **Mean**, **Standard Deviation**, and **Skewness**?? (double check this one) across the 6-second window. TBC
 
 ## Temporal Alignment & Splitting Strategy (Our 6s Rule - 1 breath)
 To align with the Tabular Preprocessing, a strict 6-second temporal constraint is applied to all audio samples using a **Sliding/Sequential Window** approach:
