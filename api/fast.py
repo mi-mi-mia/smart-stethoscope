@@ -13,7 +13,7 @@ app = FastAPI()
 #     allow_methods=["*"],  # Allows all methods
 #     allow_headers=["*"],  # Allows all headers
 # )
-
+# need to include python-multipart in the requirements.txt
 @app.get("/")
 def index():
     return {"status": "API is online", "version": "0.1-minimal"}
