@@ -1,2 +1,4 @@
 librosa
 soundlife
+colorama
+python-multipart
