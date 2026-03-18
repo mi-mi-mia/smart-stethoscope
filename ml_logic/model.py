@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, classification_report
 def run_logistic_baseline(train_df, test_df, target_col="disease", patient_col="patient_id"):
     """
     Train and evaluate a multiclass logistic regression model
-    using pre-split train and test data.
+    using scaled and pre-split train and test data.
 
     Parameters
     ----------
