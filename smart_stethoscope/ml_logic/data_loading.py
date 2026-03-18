@@ -1,6 +1,7 @@
 from pathlib import Path
 from colorama import Fore, Style
 import pandas as pd
+import numpy as np
 import librosa as lb
 import soundfile as sf
 from smart_stethoscope.params import *
@@ -71,7 +72,9 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
     return annotation_data
 
 
-def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path):
+def extract_breathing_cycles(
+    raw_audio_path: Path, preprocessed_audio_path: Path, preprocessed_padded_audio_path
+):
     """
     Extracts and saves individual breathing cycles from raw audio files.
 
@@ -84,10 +87,14 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
         Path to the folder where all the raw audio files are
     preprocessed_audio_path : Path
         Path to the folder where the extracted breathing cycles should be saved
+    preprocessed_padded_audio_path : Path
+        Path to the folder where the padded breathing cycles should be saved
 
     """
 
     preprocessed_audio_path.mkdir(parents=True, exist_ok=True)
+    preprocessed_padded_audio_path.mkdir(parents=True, exist_ok=True)
+    padding_length = int(AUDIO_LENGTH * TARGET_SAMPLING_RATE)
 
     annotation_data = load_audio_annotations(raw_audio_path)
 
@@ -95,6 +102,9 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
     for row in annotation_data.itertuples(index=False):
         audio_file = raw_audio_path / f"{row.filename}.wav"
         save_file = preprocessed_audio_path / f"{row.cycle_filename}.wav"
+        save_padding_audio = (
+            preprocessed_padded_audio_path / f"{row.cycle_filename}.wav"
+        )
 
         audio, sr = lb.load(audio_file, sr=None)
         audio = lb.resample(audio, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE)
@@ -104,6 +114,18 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
         )
 
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
+
+        if len(breathing_cycle) < padding_length:
+            # Pad with zeros
+            pad_width = padding_length - len(breathing_cycle)
+            padded_data = np.pad(breathing_cycle, (0, pad_width), mode="constant")
+        else:
+            # Trim
+            padded_data = breathing_cycle[:padding_length]
+
+        sf.write(
+            file=save_padding_audio, data=padded_data, samplerate=TARGET_SAMPLING_RATE
+        )
 
     print(
         Fore.BLUE
@@ -184,6 +206,7 @@ def load_data() -> pd.DataFrame:
     """
 
     preprocessed_audio_path = PREPROCESSED_AUDIO_PATH
+    preprocessed_padded_audio_path = PREPROCESSED_PADDED_AUTIO_PATH
     raw_audio_path = RAW_AUDIO_PATH
     diagnosis_path = DIAGNOSIS_PATH
     demographic_data_path = DEMOGRAPHIC_DATA_PATH
@@ -192,6 +215,7 @@ def load_data() -> pd.DataFrame:
         extract_breathing_cycles(
             raw_audio_path=raw_audio_path,
             preprocessed_audio_path=preprocessed_audio_path,
+            preprocessed_padded_audio_path=preprocessed_padded_audio_path,
         )
     else:
         print(
