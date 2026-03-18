@@ -4,10 +4,12 @@ from smart_stethoscope.ml_logic.preprocessing import preprocess_tabular_data
 
 def preprocessing():
     data = load_data()
-    X_train, X_test, y_train, y_test, train_pids, test_pids = preprocess_tabular_data(
-        data, pipeline_save_path="models/post_split_pipeline.pkl"
+    X_train, X_test, y_train, y_test, train_cycle_filenames, test_cycle_filenames = (
+        preprocess_tabular_data(
+            data, pipeline_save_path="models/post_split_pipeline.pkl"
+        )
     )
-    return X_train, X_test, y_train, y_test, train_pids, test_pids
+    return X_train, X_test, y_train, y_test, train_cycle_filenames, test_cycle_filenames
 
 
 def train():
