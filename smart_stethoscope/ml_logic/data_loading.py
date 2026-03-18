@@ -176,14 +176,14 @@ def load_data() -> pd.DataFrame:
         Data frame of all raw tabular data.
     """
 
-    preprocessed_audio_path = Path("../preprocessed_data/audio_breathing_cycles/")
+    preprocessed_audio_path = Path("preprocessed_data/audio_breathing_cycles/")
     raw_audio_path = Path(
-        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
+        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
     )
     diagnosis_path = Path(
-        "../raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
+        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
     )
-    demographic_data_path = Path("../raw_data/demographic_info.txt")
+    demographic_data_path = Path("raw_data/demographic_info.txt")
 
     if not any(preprocessed_audio_path.glob("*.wav")):
         extract_breathing_cycles(
