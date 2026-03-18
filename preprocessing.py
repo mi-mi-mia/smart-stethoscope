@@ -391,3 +391,47 @@ class Scaler(BaseEstimator, TransformerMixin):
         X = X.copy()
         X[['age', 'bmi', 'cycle_length']] = self.scaler.transform(X[['age', 'bmi', 'cycle_length']])
         return X
+
+
+# ===============================
+# MFCC audio feature extraction
+# ===============================
+def extract_mfcc_features(df, audio_folder, n_mfcc=13):
+    """
+    Extract MFCC summary features for each filename in df.
+    Assumes df has 'filename' column and corresponding .wav files exist.
+    """
+    mfcc_rows = []
+
+    for filename in df["filename"]:
+        file_path = Path(audio_folder) / f"{filename}.wav"
+
+        signal, sample_rate = librosa.load(file_path, sr=None)
+
+        mfcc = librosa.feature.mfcc(
+            y=signal,
+            sr=sample_rate,
+            n_mfcc=n_mfcc
+        )
+
+        mfcc_mean = np.mean(mfcc, axis=1)
+        mfcc_std = np.std(mfcc, axis=1)
+        mfcc_skew = skew(mfcc, axis=1)
+        mfcc_max = np.max(mfcc, axis=1)
+
+        combined = np.concatenate([mfcc_mean, mfcc_std, mfcc_skew, mfcc_max])
+
+        mfcc_rows.append([filename] + list(combined))
+
+    columns = ["filename"]
+
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_mean")
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_std")
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_skew")
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_max")
+
+    return pd.DataFrame(mfcc_rows, columns=columns)
