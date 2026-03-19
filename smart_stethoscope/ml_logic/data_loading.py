@@ -5,31 +5,7 @@ import numpy as np
 import librosa as lb
 import soundfile as sf
 from smart_stethoscope.params import *
-
-
-def cut_audio_data(raw_data, start, end, sr=22050):
-    """
-    Slices a numpy array of audio data using start and end timestamps.
-
-    Parameters
-    ----------
-    raw_data : np.array
-        Numpy array of audio sample
-    start : float
-        Start time in seconds
-    end : float
-        End time in seconds
-    sr : int
-        Sampling rate (default 22050)
-
-    Returns
-    -------
-    np.array : sliced audio data
-    """
-    max_ind = len(raw_data)
-    start_ind = min(int(start * sr), max_ind)
-    end_ind = min(int(end * sr), max_ind)
-    return raw_data[start_ind:end_ind]
+from smart_stethoscope.ml_logic.audio_preprocessing import cut_audio_data, pad_audio
 
 
 def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
@@ -115,14 +91,7 @@ def extract_breathing_cycles(
 
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
 
-        if len(breathing_cycle) < padding_length:
-            # Pad with zeros
-            pad_width = padding_length - len(breathing_cycle)
-            padded_data = np.pad(breathing_cycle, (0, pad_width), mode="constant")
-        else:
-            # Trim
-            padded_data = breathing_cycle[:padding_length]
-
+        padded_data = pad_audio(breathing_cycle)
         sf.write(
             file=save_padding_audio, data=padded_data, samplerate=TARGET_SAMPLING_RATE
         )
