@@ -6,7 +6,7 @@ from fastapi import FastAPI, UploadFile, File
 from tensorflow import keras
 from smart_stethoscope.ml_logic.audio_preprocessing import (
     preprocess_audio,
-    audio_feature_extraction
+    build_mel_spectrogram_dataset
 )
 from smart_stethoscope.params import TARGET_SAMPLING_RATE
 
@@ -46,10 +46,10 @@ async def predict_audio(
     # 4. Preprocess: resample, slice cycles, pad/trim
     padded_audios = preprocess_audio(audio, sr, annotations)
 
-    # 5. Extract features (MFCCs)
-    features = audio_feature_extraction(padded_audios)
+    # 5. Convert breathing cycles into mel spectrograms for CNN
+    features = build_mel_spectrogram_dataset(padded_audios)
 
-    # 6. Predict — CNN returns probabilities, argmax gives class
+    # 6. Predict per cycle — CNN returns probabilities, argmax gives class
     probabilities = model.predict(features)         # shape: (n_cycles, 6)
     predicted_ints = np.argmax(probabilities, axis=1)  # one per cycle
 
