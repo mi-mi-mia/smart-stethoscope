@@ -2,3 +2,5 @@ librosa
 soundfile
 colorama
 python-multipart
+fastapi
+uvicorn
