@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import librosa as lb
 from smart_stethoscope.params import *
+from pathlib import Path
+from scipy.stats import skew
 
 
 # ===================================
@@ -46,35 +48,19 @@ def pad_audio(breathing_cycle: np.ndarray):
     return padded_audio
 
 
-# ===================================
-# Optional Audio Feature Extraction
-# (for use in model exploration)
-# ===================================
-
-def extract_mfcc_feature_map(padded_audio: np.ndarray) -> np.ndarray:
-    """
-    Extract full MFCC feature map (time-frequency representation).
-
-    Retains temporal structure for experimentation with CNNs
-    or alternative architectures.
-
-    Not currently used in production inference.
-    """
-    n_mfcc = 13
-    mfccs = []
-
-    for breathing_cycle in padded_audio:
-        mfcc = lb.feature.mfcc(
-            y=breathing_cycle, sr=TARGET_SAMPLING_RATE, n_mfcc=n_mfcc
-        )
-        mfccs.append(mfcc)
-
-    return np.stack(mfccs)
-
-
 def preprocess_audio(
     audio: np.ndarray, original_sampling_rate: int, annotations: pd.DataFrame
 ) -> np.ndarray:
+    """
+    Resample a raw respiratory recording, cut it into breathing cycles using
+    annotation start/end times, and pad or trim each cycle to a fixed length.
+
+    Returns
+    -------
+    np.ndarray
+    Array of shape (num_cycles, fixed_num_samples) containing one padded
+    waveform per breathing cycle.
+    """
     # Resample:
     audio = lb.resample(
         audio, orig_sr=original_sampling_rate, target_sr=TARGET_SAMPLING_RATE
@@ -90,31 +76,171 @@ def preprocess_audio(
 
     return padded_audios_array
 
+
+def extract_mel_spectrogram(
+    breathing_cycle: np.ndarray,
+    sample_rate: int = TARGET_SAMPLING_RATE,
+    n_mels: int = 64,
+    max_time_steps: int = 200
+) -> np.ndarray:
+    """
+    Convert one breathing-cycle waveform into the mel spectrogram format
+    used by the production CNN model.
+
+    Steps
+    -----
+    - Compute mel spectrogram from waveform
+    - Convert power spectrogram to dB scale
+    - Pad or crop the time axis to a fixed width
+    - Add channel dimension for CNN input
+
+    Parameters
+    ----------
+    breathing_cycle : np.ndarray
+        One breathing-cycle waveform.
+    sample_rate : int, default=TARGET_SAMPLING_RATE
+        Sampling rate of the waveform.
+    n_mels : int, default=64
+        Number of mel frequency bins.
+    max_time_steps : int, default=200
+        Fixed width for the spectrogram. Shorter spectrograms are padded
+        with zeros on the right; longer ones are cropped on the right.
+
+    Returns
+    -------
+    np.ndarray
+        Mel spectrogram of shape (n_mels, max_time_steps, 1),
+        ready for CNN input.
+    """
+    mel_spec = lb.feature.melspectrogram(
+        y=breathing_cycle,
+        sr=sample_rate,
+        n_mels=n_mels
+    )
+
+    mel_spec_db = lb.power_to_db(mel_spec, ref=np.max)
+
+    current_time_steps = mel_spec_db.shape[1]
+
+    if current_time_steps < max_time_steps:
+        pad_width = max_time_steps - current_time_steps
+        mel_spec_db = np.pad(
+            mel_spec_db,
+            pad_width=((0, 0), (0, pad_width)),
+            mode="constant"
+        )
+    elif current_time_steps > max_time_steps:
+        mel_spec_db = mel_spec_db[:, :max_time_steps]
+
+    mel_spec_db = mel_spec_db[..., np.newaxis]
+
+    return mel_spec_db.astype(np.float32)
+
+
+def build_mel_spectrogram_dataset(
+    padded_audio: np.ndarray,
+    sample_rate: int = TARGET_SAMPLING_RATE,
+    n_mels: int = 64,
+    max_time_steps: int = 200
+) -> np.ndarray:
+    """
+    Convert an array of padded breathing cycles into a CNN-ready batch of
+    mel spectrograms.
+
+    Parameters
+    ----------
+    padded_audio : np.ndarray
+        Array of shape (num_cycles, num_samples), where each row is one
+        breathing-cycle waveform.
+    sample_rate : int, default=TARGET_SAMPLING_RATE
+        Sampling rate of the waveforms.
+    n_mels : int, default=64
+        Number of mel frequency bins.
+    max_time_steps : int, default=200
+        Fixed width for each spectrogram.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (num_cycles, n_mels, max_time_steps, 1)
+        suitable for CNN prediction.
+    """
+    mel_specs = []
+
+    for breathing_cycle in padded_audio:
+        mel = extract_mel_spectrogram(
+            breathing_cycle=breathing_cycle,
+            sample_rate=sample_rate,
+            n_mels=n_mels,
+            max_time_steps=max_time_steps
+        )
+        mel_specs.append(mel)
+
+    return np.stack(mel_specs).astype(np.float32)
+
+
+# ===================================
+# Optional Audio Feature Extraction
+# (for use in model exploration)
+# ===================================
+
+def extract_mfcc_feature_map(padded_audio: np.ndarray) -> np.ndarray:
+    """
+    Extract full MFCC matrices from padded breathing cycles.
+    Each breathing cycle is converted into an MFCC array of shape
+    (n_mfcc, time_frames), preserving temporal structure.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (num_cycles, n_mfcc, time_frames), suitable for
+        experimentation with CNNs or other deep learning models.
+
+    Notes
+    -----
+    This function is for model exploration and is not currently used in
+    production inference.
+    """
+    n_mfcc = 13
+    mfccs = []
+
+    for breathing_cycle in padded_audio:
+        mfcc = lb.feature.mfcc(
+            y=breathing_cycle, sr=TARGET_SAMPLING_RATE, n_mfcc=n_mfcc
+        )
+        mfccs.append(mfcc)
+
+    return np.stack(mfccs)
+
+
 def extract_mfcc_summary_features(df, audio_folder, n_mfcc=13):
     """
-    Extract summary MFCC features for classical ML models.
+    Extract aggregated MFCC summary features from pre-cut breathing-cycle .wav files.
 
-    For each breathing cycle:
-    - Compute MFCC matrix (n_mfcc x time_frames)
-    - Collapse the time dimension using summary statistics
-      (mean, std, skewness, max) per coefficient
+    For each cycle file:
+    - load waveform
+    - compute MFCC matrix
+    - summarise each coefficient across time using mean, std, skewness, and max
 
-    Returns:
-        pd.DataFrame where each row corresponds to a breathing cycle
-        and columns contain aggregated MFCC statistics.
+    Returns
+    -------
+    pd.DataFrame
+        One row per cycle_filename with statistical MFCC features suitable for
+        classical tabular models such as Logistic Regression.
 
-    Output shape per sample:
-        (n_mfcc * 4,)  -> suitable for tabular models
-        such as Logistic Regression, Random Forest, etc.
+    Notes
+    -----
+    This function is intended for model exploration and baseline modelling.
+    It is not currently used in production inference.
     """
     mfcc_rows = []
 
     for cycle_filename in df["cycle_filename"]:
         file_path = Path(audio_folder) / f"{cycle_filename}.wav"
 
-        signal, sample_rate = librosa.load(file_path, sr=None)
+        signal, sample_rate = lb.load(file_path, sr=None)
 
-        mfcc = librosa.feature.mfcc(
+        mfcc = lb.feature.mfcc(
             y=signal,
             sr=sample_rate,
             n_mfcc=n_mfcc
