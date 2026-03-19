@@ -4,6 +4,11 @@ import librosa as lb
 from smart_stethoscope.params import *
 
 
+# ===================================
+# Core Audio Preprocessing (Production)
+# Used by current live model + API
+# ===================================
+
 def cut_audio_data(raw_data, start, end, sr=22050):
     """
     Slices a numpy array of audio data using start and end timestamps.
@@ -41,10 +46,20 @@ def pad_audio(breathing_cycle: np.ndarray):
     return padded_audio
 
 
-def audio_feature_extraction(padded_audio: np.ndarray) -> np.ndarray:
-    # TODO: Depending on the model, extract the feature we want.
-    # don't hard code n_mfcc here. make parameter as same like in training.
-    # We should use the same feature extraction function for training and practicing!!!
+# ===================================
+# Optional Audio Feature Extraction
+# (for use in model exploration)
+# ===================================
+
+def extract_mfcc_feature_map(padded_audio: np.ndarray) -> np.ndarray:
+    """
+    Extract full MFCC feature map (time-frequency representation).
+
+    Retains temporal structure for experimentation with CNNs
+    or alternative architectures.
+
+    Not currently used in production inference.
+    """
     n_mfcc = 13
     mfccs = []
 
@@ -74,3 +89,55 @@ def preprocess_audio(
     padded_audios_array = np.stack(padded_audios).astype(np.float32)
 
     return padded_audios_array
+
+def extract_mfcc_summary_features(df, audio_folder, n_mfcc=13):
+    """
+    Extract summary MFCC features for classical ML models.
+
+    For each breathing cycle:
+    - Compute MFCC matrix (n_mfcc x time_frames)
+    - Collapse the time dimension using summary statistics
+      (mean, std, skewness, max) per coefficient
+
+    Returns:
+        pd.DataFrame where each row corresponds to a breathing cycle
+        and columns contain aggregated MFCC statistics.
+
+    Output shape per sample:
+        (n_mfcc * 4,)  -> suitable for tabular models
+        such as Logistic Regression, Random Forest, etc.
+    """
+    mfcc_rows = []
+
+    for cycle_filename in df["cycle_filename"]:
+        file_path = Path(audio_folder) / f"{cycle_filename}.wav"
+
+        signal, sample_rate = librosa.load(file_path, sr=None)
+
+        mfcc = librosa.feature.mfcc(
+            y=signal,
+            sr=sample_rate,
+            n_mfcc=n_mfcc
+        )
+
+        mfcc_mean = np.mean(mfcc, axis=1)
+        mfcc_std = np.std(mfcc, axis=1)
+        mfcc_skew = skew(mfcc, axis=1)
+        mfcc_max = np.max(mfcc, axis=1)
+
+        combined = np.concatenate([mfcc_mean, mfcc_std, mfcc_skew, mfcc_max])
+
+        mfcc_rows.append([cycle_filename] + list(combined))
+
+    columns = ["cycle_filename"]
+
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_mean")
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_std")
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_skew")
+    for i in range(1, n_mfcc + 1):
+        columns.append(f"mfcc_{i}_max")
+
+    return pd.DataFrame(mfcc_rows, columns=columns)
