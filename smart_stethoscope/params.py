@@ -33,3 +33,5 @@ DIAGNOSIS_PATH = (
 )
 DEMOGRAPHIC_DATA_PATH = repo_root / "raw_data/demographic_info.txt"
 CACHE_PATH = repo_root / "preprocessed_data/"
+
+N_MFCC = 13  # or whatever you trained with
