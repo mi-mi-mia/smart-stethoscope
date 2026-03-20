@@ -2,3 +2,4 @@ librosa
 soundfile
 colorama
 python-multipart
+tensorflow
