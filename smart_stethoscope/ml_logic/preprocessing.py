@@ -196,10 +196,10 @@ def calculate_bmi(row):
     return np.nan
 
 
-def stratified_group_split(data, test_size=0.2, random_state=42):
+def stratified_group_split(data, test_size=0.2, val_size=0.1875, random_state=42):
     """
-    Splits at patient level so no patient appears in both train and test,
-    while preserving disease class proportions across the split.
+    Splits at patient level so no patient appears in more than one split,
+    while preserving disease class proportions across all three splits.
 
     Extracts pid temporarily from cycle_filename for splitting purposes.
 
@@ -209,31 +209,44 @@ def stratified_group_split(data, test_size=0.2, random_state=42):
         Preprocessed dataframe containing 'cycle_filename' and 'disease' columns.
     test_size : float
         Proportion of patients to include in test set.
+    val_size : float
+        Proportion of remaining patients (after test removed) to include in val set.
+        Default 0.1875 yields ~15% of total patients.
     random_state : int
 
     Returns
     -------
-    train_data, test_data : pd.DataFrame
-    train_cycle_filenames, test_cycle_filenames : np.ndarray
+    train_data, val_data, test_data : pd.DataFrame
+    train_cycle_filenames, val_cycle_filenames, test_cycle_filenames : np.ndarray
     """
-    # Extract pid temporarily for patient-level split
     data = data.copy()
     data['pid'] = data['cycle_filename'].str.split('_').str[0].astype(int)
 
     patient_diseases = data.groupby('pid')['disease'].first().reset_index()
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    train_idx, test_idx = next(sss.split(patient_diseases['pid'], patient_diseases['disease']))
-    train_pids = patient_diseases.iloc[train_idx]['pid'].values
+
+    # First pass: carve out test
+    sss_test = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+    train_val_idx, test_idx = next(sss_test.split(patient_diseases['pid'], patient_diseases['disease']))
+
+    train_val_patients = patient_diseases.iloc[train_val_idx]
     test_pids = patient_diseases.iloc[test_idx]['pid'].values
 
+    # Second pass: split remaining into train and val
+    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_size, random_state=random_state)
+    train_idx, val_idx = next(sss_val.split(train_val_patients['pid'], train_val_patients['disease']))
+
+    train_pids = train_val_patients.iloc[train_idx]['pid'].values
+    val_pids = train_val_patients.iloc[val_idx]['pid'].values
+
     train_data = data[data['pid'].isin(train_pids)].drop(columns=['pid']).reset_index(drop=True)
-    test_data = data[data['pid'].isin(test_pids)].drop(columns=['pid']).reset_index(drop=True)
+    val_data   = data[data['pid'].isin(val_pids)].drop(columns=['pid']).reset_index(drop=True)
+    test_data  = data[data['pid'].isin(test_pids)].drop(columns=['pid']).reset_index(drop=True)
 
     train_cycle_filenames = train_data['cycle_filename'].values
-    test_cycle_filenames = test_data['cycle_filename'].values
+    val_cycle_filenames   = val_data['cycle_filename'].values
+    test_cycle_filenames  = test_data['cycle_filename'].values
 
-    return train_data, test_data, train_cycle_filenames, test_cycle_filenames
-
+    return train_data, val_data, test_data, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
 def preprocess_tabular_data(data, pipeline_save_path=None):
@@ -258,8 +271,8 @@ def preprocess_tabular_data(data, pipeline_save_path=None):
 
     Returns
     -------
-    X_train, X_test : pd.DataFrame
-    y_train, y_test : pd.Series
+    X_train, X_val, X_test : pd.DataFrame
+    y_train, y_val, y_test : pd.Series
     train_cycle_filenames, test_cycle_filenames : np.ndarray
     """
     pre_split_pipeline = Pipeline([
@@ -275,22 +288,24 @@ def preprocess_tabular_data(data, pipeline_save_path=None):
     # 1. Pre-split transformations
     data = pre_split_pipeline.fit_transform(data)
 
-    # 2. Train/test split at patient level
-    train_data, test_data, train_cycle_filenames, test_cycle_filenames = stratified_group_split(data)
+   # 2. Train/val/test split at patient level
+    train_data, val_data, test_data, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames = stratified_group_split(data)
 
     # 3. Separate features and target
     X_train = train_data.drop(columns=['disease', 'cycle_filename'])
     y_train = train_data['disease']
-    X_test = test_data.drop(columns=['disease', 'cycle_filename'])
-    y_test = test_data['disease']
+    X_val   = val_data.drop(columns=['disease', 'cycle_filename'])
+    y_val   = val_data['disease']
+    X_test  = test_data.drop(columns=['disease', 'cycle_filename'])
+    y_test  = test_data['disease']
 
-    # 4. Post-split: fit on train, transform both
+    # 4. Post-split: fit on train only, transform all three
     X_train = post_split_pipeline.fit_transform(X_train)
-    X_test = post_split_pipeline.transform(X_test)
-
+    X_val   = post_split_pipeline.transform(X_val)
+    X_test  = post_split_pipeline.transform(X_test)
     # 5. Optionally save fitted pipeline
     if pipeline_save_path is not None:
         Path(pipeline_save_path).parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(post_split_pipeline, pipeline_save_path)
 
-    return X_train, X_test, y_train, y_test, train_cycle_filenames, test_cycle_filenames
+    return X_train, X_val, X_test, y_train, y_val, y_test, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames
