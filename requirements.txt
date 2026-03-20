@@ -6,3 +6,4 @@ fastapi
 uvicorn
 pandas
 tensorflow
+mlflow
