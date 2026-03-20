@@ -4,3 +4,4 @@ colorama
 python-multipart
 fastapi
 uvicorn
+pandas
