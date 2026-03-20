@@ -7,12 +7,12 @@ import pandas as pd
 
 def preprocessing():
     data = load_data()
-    X_train, X_test, y_train, y_test, train_cycle_filenames, test_cycle_filenames = (
+    X_train, X_val, X_test, y_train, y_val, y_test, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames = (
         preprocess_tabular_data(
             data, pipeline_save_path="models/post_split_pipeline.pkl"
         )
     )
-    return X_train, X_test, y_train, y_test, train_cycle_filenames, test_cycle_filenames
+    return X_train, X_val, X_test, y_train, y_val, y_test, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames
 
 
 def train():
