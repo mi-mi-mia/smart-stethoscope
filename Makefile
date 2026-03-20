@@ -52,7 +52,7 @@ docker_build_local:
 
 docker_run_local:
 	docker run \
-		-e PORT=8000 -p $(DOCKER_LOCAL_PORT):8000 \
+		-e PORT=8080 -p $(DOCKER_LOCAL_PORT):8080 \
 		--env-file .env \
 		$(DOCKER_IMAGE_NAME):local
 
@@ -112,8 +112,9 @@ docker_push:
 	docker push $(DOCKER_IMAGE_PATH):prod
 
 docker_deploy:
-	gcloud run deploy \
+	gcloud run deploy $(SERVICE_NAME) \
 		--image $(DOCKER_IMAGE_PATH):prod \
 		--memory $(GAR_MEMORY) \
 		--region $(GCP_REGION) \
+		--allow-unauthenticated \
 		--env-vars-file .env.yaml
