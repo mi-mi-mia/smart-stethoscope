@@ -1,3 +1,4 @@
+import os
 import io
 import numpy as np
 import pandas as pd
@@ -11,7 +12,8 @@ from smart_stethoscope.ml_logic.audio_preprocessing import (
 from smart_stethoscope.params import TARGET_SAMPLING_RATE
 
 # Load once at startup
-model = keras.models.load_model("models/best_cnn_model.keras")
+MODEL_PATH = os.getenv("MODEL_PATH", "models/best_cnn_model.keras")
+model = keras.models.load_model(MODEL_PATH)
 
 DISEASE_MAPPING_INV = {
     0: 'Healthy', 1: 'COPD', 2: 'URTI',
