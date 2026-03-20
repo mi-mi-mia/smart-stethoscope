@@ -3,3 +3,5 @@ soundfile
 colorama
 python-multipart
 tensorflow
+fastapi
+uvicorn
