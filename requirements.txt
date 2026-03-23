@@ -2,9 +2,11 @@ librosa
 soundfile
 colorama
 python-multipart
-tensorflow
+tensorflow==2.15.0 ## to work with streamlit
 fastapi
 uvicorn
 pandas
 tensorflow
 mlflow
+streamlit
+requests
