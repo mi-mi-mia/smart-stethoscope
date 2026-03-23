@@ -4,7 +4,7 @@ This document describes the technical pipeline used to transform raw respiratory
 
 ---
 
-## 🛠️ Preprocessing Workflow
+## Preprocessing Workflow
 
 The pipeline follows a specific order to ensure signal integrity and feature relevance. Processing the signal in this sequence prevents noise amplification before cleaning.
 
