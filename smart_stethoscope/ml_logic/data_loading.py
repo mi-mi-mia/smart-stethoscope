@@ -1,33 +1,11 @@
 from pathlib import Path
+from colorama import Fore, Style
 import pandas as pd
+import numpy as np
 import librosa as lb
 import soundfile as sf
-from colorama import Fore, Style
-
-
-def cut_audio_data(raw_data, start, end, sr=22050):
-    """
-    Slices a numpy array of audio data using start and end timestamps.
-
-    Parameters
-    ----------
-    raw_data : np.array
-        Numpy array of audio sample
-    start : float
-        Start time in seconds
-    end : float
-        End time in seconds
-    sr : int
-        Sampling rate (default 22050)
-
-    Returns
-    -------
-    np.array : sliced audio data
-    """
-    max_ind = len(raw_data)
-    start_ind = min(int(start * sr), max_ind)
-    end_ind = min(int(end * sr), max_ind)
-    return raw_data[start_ind:end_ind]
+from smart_stethoscope.params import *
+from smart_stethoscope.ml_logic.audio_preprocessing import cut_audio_data, pad_audio
 
 
 def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
@@ -70,7 +48,9 @@ def load_audio_annotations(raw_audio_path: Path) -> pd.DataFrame:
     return annotation_data
 
 
-def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path):
+def extract_breathing_cycles(
+    raw_audio_path: Path, preprocessed_audio_path: Path, preprocessed_padded_audio_path
+):
     """
     Extracts and saves individual breathing cycles from raw audio files.
 
@@ -83,10 +63,14 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
         Path to the folder where all the raw audio files are
     preprocessed_audio_path : Path
         Path to the folder where the extracted breathing cycles should be saved
+    preprocessed_padded_audio_path : Path
+        Path to the folder where the padded breathing cycles should be saved
 
     """
 
     preprocessed_audio_path.mkdir(parents=True, exist_ok=True)
+    preprocessed_padded_audio_path.mkdir(parents=True, exist_ok=True)
+    padding_length = int(AUDIO_LENGTH * TARGET_SAMPLING_RATE)
 
     annotation_data = load_audio_annotations(raw_audio_path)
 
@@ -94,11 +78,23 @@ def extract_breathing_cycles(raw_audio_path: Path, preprocessed_audio_path: Path
     for row in annotation_data.itertuples(index=False):
         audio_file = raw_audio_path / f"{row.filename}.wav"
         save_file = preprocessed_audio_path / f"{row.cycle_filename}.wav"
+        save_padding_audio = (
+            preprocessed_padded_audio_path / f"{row.cycle_filename}.wav"
+        )
 
-        audio, sr = lb.load(audio_file)
-        breathing_cycle = cut_audio_data(audio, row.start, row.end, sr)
+        audio, sr = lb.load(audio_file, sr=None)
+        audio = lb.resample(audio, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE)
+
+        breathing_cycle = cut_audio_data(
+            audio, row.start, row.end, TARGET_SAMPLING_RATE
+        )
 
         sf.write(file=save_file, data=breathing_cycle, samplerate=sr)
+
+        padded_data = pad_audio(breathing_cycle)
+        sf.write(
+            file=save_padding_audio, data=padded_data, samplerate=TARGET_SAMPLING_RATE
+        )
 
     print(
         Fore.BLUE
@@ -129,7 +125,7 @@ def load_tabular_data(
         Data frame of all raw tabular data.
     """
 
-    cache_path = Path("preprocessed_data/")
+    cache_path = CACHE_PATH
     cache_file = cache_path / "raw_tabular_data.csv"
     if cache_file.is_file():
         print(Fore.BLUE + "\nLoad data from cached CSV..." + Style.RESET_ALL)
@@ -158,7 +154,7 @@ def load_tabular_data(
 
         audio_data = pd.merge(audio_annotations, patient_data, on="pid")
         allfactors_data = pd.merge(audio_data, demographic_data, on="pid")
-        allfactors_data = allfactors_data.drop(columns=['pid'])  # add here
+        allfactors_data = allfactors_data.drop(columns=["pid"])  # add here
 
         # Save tabular data in cache
         cache_path.mkdir(parents=True, exist_ok=True)
@@ -178,19 +174,17 @@ def load_data() -> pd.DataFrame:
         Data frame of all raw tabular data.
     """
 
-    preprocessed_audio_path = Path("preprocessed_data/audio_breathing_cycles/")
-    raw_audio_path = Path(
-        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
-    )
-    diagnosis_path = Path(
-        "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
-    )
-    demographic_data_path = Path("raw_data/demographic_info.txt")
+    preprocessed_audio_path = PREPROCESSED_AUDIO_PATH
+    preprocessed_padded_audio_path = PREPROCESSED_PADDED_AUTIO_PATH
+    raw_audio_path = RAW_AUDIO_PATH
+    diagnosis_path = DIAGNOSIS_PATH
+    demographic_data_path = DEMOGRAPHIC_DATA_PATH
 
     if not any(preprocessed_audio_path.glob("*.wav")):
         extract_breathing_cycles(
             raw_audio_path=raw_audio_path,
             preprocessed_audio_path=preprocessed_audio_path,
+            preprocessed_padded_audio_path=preprocessed_padded_audio_path,
         )
     else:
         print(

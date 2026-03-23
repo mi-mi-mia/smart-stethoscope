@@ -1,4 +1,10 @@
 librosa
-soundlife
+soundfile
 colorama
 python-multipart
+tensorflow
+fastapi
+uvicorn
+pandas
+tensorflow
+mlflow

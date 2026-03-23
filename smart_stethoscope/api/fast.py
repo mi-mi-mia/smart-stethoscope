@@ -1,28 +1,65 @@
-
-### fourth version
-
+import os
+import io
+import numpy as np
+import pandas as pd
+import librosa
 from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
+from tensorflow import keras
+from smart_stethoscope.ml_logic.audio_preprocessing import (
+    preprocess_audio,
+    build_mel_spectrogram_dataset
+)
+from smart_stethoscope.params import TARGET_SAMPLING_RATE
+
+# Load once at startup
+MODEL_PATH = os.getenv("MODEL_PATH", "models/best_cnn_model.keras")
+model = keras.models.load_model(MODEL_PATH)
+
+DISEASE_MAPPING_INV = {
+    0: 'Healthy', 1: 'COPD', 2: 'URTI',
+    3: 'Bronchiectasis', 4: 'Pneumonia', 5: 'Bronchiolitis'
+}
+
 app = FastAPI()
 
-# # Allow all requests (optional, good for development purposes)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Allows all origins
-#     allow_credentials=True,
-#     allow_methods=["*"],  # Allows all methods
-#     allow_headers=["*"],  # Allows all headers
-# )
-# need to include python-multipart in the requirements.txt
 @app.get("/")
 def index():
-    return {"status": "API is online", "version": "0.1-minimal"}
+    return {"status": "API is online"}
+
 @app.post("/predict")
-async def predict_audio(file: UploadFile = File(...)):
-    # not yet sure what this does
-    _ = await file.read()
-    # Hardcoded repsonse (Mnimal API)
-    return { "filename": file.filename,
-            "prediction": "Healthy",
-            "confidence": 0.98,
-            "features_extracted": { "centroid": 1500.5, "bandwidth": 2200.1, "rolloff": 4500.0, "mfcc_1": -250.3 } }
+async def predict_audio(
+    audio_file: UploadFile = File(...),
+    annotation_file: UploadFile = File(...)
+):
+    # 1. Read both files into memory as bytes
+    audio_bytes = await audio_file.read()
+    annotation_bytes = await annotation_file.read()
+
+    # 2. Load audio into numpy array — no disk write needed
+    audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=None)
+
+    # 3. Parse annotation .txt into a DataFrame
+    annotations = pd.read_csv(
+        io.StringIO(annotation_bytes.decode("utf-8")),
+        sep="\t",
+        names=["start", "end", "crackles", "wheezes"]
+    )
+
+    # 4. Preprocess: resample, slice cycles, pad/trim
+    padded_audios = preprocess_audio(audio, sr, annotations)
+
+    # 5. Convert breathing cycles into mel spectrograms for CNN
+    features = build_mel_spectrogram_dataset(padded_audios)
+
+    # 6. Predict per cycle — CNN returns probabilities, argmax gives class
+    probabilities = model.predict(features)         # shape: (n_cycles, 6)
+    predicted_ints = np.argmax(probabilities, axis=1)  # one per cycle
+
+    # 7. Majority vote across cycles → single prediction per recording
+    prediction_int = int(np.bincount(predicted_ints).argmax())
+
+    return {
+        "prediction": DISEASE_MAPPING_INV[prediction_int],
+        "cycles_analysed": len(predicted_ints),
+        "cycle_predictions": [DISEASE_MAPPING_INV[i] for i in predicted_ints.tolist()]
+    }
