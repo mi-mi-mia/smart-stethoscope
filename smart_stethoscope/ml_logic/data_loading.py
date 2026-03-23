@@ -70,7 +70,6 @@ def extract_breathing_cycles(
 
     preprocessed_audio_path.mkdir(parents=True, exist_ok=True)
     preprocessed_padded_audio_path.mkdir(parents=True, exist_ok=True)
-    padding_length = int(AUDIO_LENGTH * TARGET_SAMPLING_RATE)
 
     annotation_data = load_audio_annotations(raw_audio_path)
 
@@ -82,8 +81,14 @@ def extract_breathing_cycles(
             preprocessed_padded_audio_path / f"{row.cycle_filename}.wav"
         )
 
-        audio, sr = lb.load(audio_file, sr=None)
-        audio = lb.resample(audio, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE)
+        audio, sr = sf.read(audio_file, dtype="float32")
+        mu = 255
+        audio_compressed = np.sign(audio) * np.log1p(mu * np.abs(audio)) / np.log1p(mu)
+
+        # audio, sr = lb.load(audio_file, sr=None)
+        audio = lb.resample(
+            audio_compressed, orig_sr=sr, target_sr=TARGET_SAMPLING_RATE
+        )
 
         breathing_cycle = cut_audio_data(
             audio, row.start, row.end, TARGET_SAMPLING_RATE
