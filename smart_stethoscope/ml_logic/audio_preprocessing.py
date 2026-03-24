@@ -122,47 +122,6 @@ def extract_numerical_audio_features(audio):
     return features
 
 
-def pad_audio(breathing_cycle: np.ndarray):
-    padding_length = int(AUDIO_LENGTH * TARGET_SAMPLING_RATE)
-    if len(breathing_cycle) < padding_length:
-        # Pad with zeros
-        pad_width = padding_length - len(breathing_cycle)
-        padded_audio = np.pad(breathing_cycle, (0, pad_width), mode="constant")
-    else:
-        # Trim
-        padded_audio = breathing_cycle[:padding_length]
-    return padded_audio
-
-
-def preprocess_audio(
-    audio: np.ndarray, original_sampling_rate: int, annotations: pd.DataFrame
-) -> np.ndarray:
-    """
-    Resample a raw respiratory recording, cut it into breathing cycles using
-    annotation start/end times, and pad or trim each cycle to a fixed length.
-
-    Returns
-    -------
-    np.ndarray
-    Array of shape (num_cycles, fixed_num_samples) containing one padded
-    waveform per breathing cycle.
-    """
-    # Resample:
-    audio = lb.resample(
-        audio, orig_sr=original_sampling_rate, target_sr=TARGET_SAMPLING_RATE
-    )
-    padded_audios = []
-    for row in annotations.itertuples(index=False):
-        breathing_cycle = cut_audio_data(
-            audio, row.start, row.end, TARGET_SAMPLING_RATE
-        )
-        padded_audio = pad_audio(breathing_cycle=breathing_cycle)
-        padded_audios.append(padded_audio)
-    padded_audios_array = np.stack(padded_audios).astype(np.float32)
-
-    return padded_audios_array
-
-
 def extract_mel_spectrogram(
     breathing_cycle: np.ndarray,
     sample_rate: int = TARGET_SAMPLING_RATE,
