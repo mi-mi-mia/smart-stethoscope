@@ -3,7 +3,6 @@ from colorama import Fore, Style
 import pandas as pd
 import numpy as np
 import librosa as lb
-import soundfile as sf
 from smart_stethoscope.params import *
 from smart_stethoscope.ml_logic.audio_preprocessing import (
     extract_audio_segments,
