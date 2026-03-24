@@ -10,144 +10,204 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 
 
+CLASS_NAMES = ["Bronchiectasis", "COPD", "Healthy", "Pneumonia", "URTI"]
+DEFAULT_XGB_WEIGHT = 0.6
+
+
 # ================================
-# Simple CNN
+# Training models
 # ================================
 def build_cnn_model(input_shape, num_classes):
-    """Build and compile a small CNN for mel spectrogram classification."""
+    """Build and compile a CNN for mel spectrogram classification."""
+    pass
 
-    cnn_model = models.Sequential()
-
-    cnn_model.add(layers.Input(shape=input_shape))
-    cnn_model.add(
-        layers.Conv2D(
-            filters=16,
-            kernel_size=(3, 3),
-            activation="relu",
-            padding="same"
-        )
-    )
-    cnn_model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-
-    cnn_model.add(
-        layers.Conv2D(
-            filters=32,
-            kernel_size=(3, 3),
-            activation="relu",
-            padding="same"
-        )
-    )
-    cnn_model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-
-    cnn_model.add(layers.GlobalAveragePooling2D())
-    cnn_model.add(layers.Dense(32, activation="relu"))
-    cnn_model.add(layers.Dropout(0.3))
-    cnn_model.add(layers.Dense(num_classes, activation="softmax"))
-
-    cnn_model.compile(
-        optimizer="adam",
-        loss="categorical_crossentropy",
-        metrics=["accuracy"]
-    )
-
-    return cnn_model
+    # return cnn_model
 
 
-def train_cnn_model(
-    X_train_img,
-    X_test_img,
-    y_train,
-    y_test,
-    epochs=15,
-    batch_size=32,
-    patience=5
-):
+def train_cnn_model():
+    pass
+
+
+
+# ================================
+# Hybrid prediction
+# ================================
+def predict_xgb_proba(xgb_model, xgb_df):
     """
-    Train and evaluate a CNN on mel spectrogram images.
+    Predict class probabilities from the XGBoost model.
 
     Parameters
     ----------
-    X_train_img : np.ndarray
-        Training spectrogram images
-    X_test_img : np.ndarray
-        Test spectrogram images
-    y_train : pd.Series or np.ndarray
-        Integer class labels for training
-    y_test : pd.Series or np.ndarray
-        Integer class labels for test
+    xgb_model : fitted XGBoost model
+    xgb_df : pd.DataFrame
+        Tabular feature dataframe, one row per chunk
 
     Returns
     -------
-    cnn_model : keras.Model
-        Trained CNN model
-    history : keras.callbacks.History
-        Training history
-    metrics : dict
-        Summary evaluation metrics
-    y_pred_cnn : np.ndarray
-        Predicted class labels for test set
+    np.ndarray
+        Shape: (n_chunks, n_classes)
     """
+    return xgb_model.predict_proba(xgb_df)
 
-    # CNN-specific label prep
-    num_classes = len(np.unique(y_train))
-    y_train_cat = to_categorical(y_train, num_classes=num_classes)
-    y_test_cat = to_categorical(y_test, num_classes=num_classes)
 
-    input_shape = X_train_img.shape[1:]
+def predict_cnn_proba(cnn_model, cnn_array):
+    """
+    Predict class probabilities from the CNN model.
 
-    # Build model
-    cnn_model = build_cnn_model(input_shape=input_shape, num_classes=num_classes)
+    Parameters
+    ----------
+    cnn_model : fitted Keras/TensorFlow model
+    cnn_array : np.ndarray
+        Mel spectrogram array, shape (n_chunks, height, width, channels)
 
-    # Class weights
-    y_train_int = np.argmax(y_train_cat, axis=1)
-    class_weights = compute_class_weight(
-        class_weight="balanced",
-        classes=np.unique(y_train_int),
-        y=y_train_int
-    )
-    class_weights_dict = dict(enumerate(class_weights))
+    Returns
+    -------
+    np.ndarray
+        Shape: (n_chunks, n_classes)
+    """
+    return cnn_model.predict(cnn_array, verbose=0)
 
-    # Callback
-    early_stopping = EarlyStopping(
-        monitor="val_loss",
-        patience=patience,
-        restore_best_weights=True
-    )
 
-    # Train
-    history = cnn_model.fit(
-        X_train_img,
-        y_train_cat,
-        validation_split=0.2,
-        epochs=epochs,
-        batch_size=batch_size,
-        class_weight=class_weights_dict,
-        callbacks=[early_stopping],
-        verbose=1
-    )
+def fuse_proba(xgb_proba, cnn_proba, w=DEFAULT_XGB_WEIGHT):
+    """
+    Fuse XGB and CNN probabilities using weighted average.
 
-    # Evaluate
-    test_loss, test_accuracy = cnn_model.evaluate(X_test_img, y_test_cat, verbose=1)
+    Parameters
+    ----------
+    xgb_proba : np.ndarray
+        Shape: (n_chunks, n_classes)
+    cnn_proba : np.ndarray
+        Shape: (n_chunks, n_classes)
+    w : float
+        Weight for XGB. CNN weight becomes (1 - w)
 
-    y_pred_probs = cnn_model.predict(X_test_img)
-    y_pred_cnn = np.argmax(y_pred_probs, axis=1)
-    y_test_int = np.argmax(y_test_cat, axis=1)
+    Returns
+    -------
+    np.ndarray
+        Shape: (n_chunks, n_classes)
+    """
+    if xgb_proba.shape != cnn_proba.shape:
+        raise ValueError(
+            f"xgb_proba shape {xgb_proba.shape} does not match "
+            f"cnn_proba shape {cnn_proba.shape}"
+        )
 
-    macro_f1 = f1_score(y_test_int, y_pred_cnn, average="macro")
+    return w * xgb_proba + (1 - w) * cnn_proba
 
-    print("Test loss:", test_loss)
-    print("Test accuracy:", test_accuracy)
-    print("Macro F1:", macro_f1)
-    print(classification_report(y_test_int, y_pred_cnn, zero_division=0))
 
-    metrics = {
-        "test_loss": float(test_loss),
-        "test_accuracy": float(test_accuracy),
-        "macro_f1": float(macro_f1),
-        "num_classes": int(num_classes)
+def aggregate_chunk_proba(chunk_proba):
+    """
+    Aggregate chunk-level probabilities into one final probability vector.
+
+    Current approach:
+    - mean probability across chunks
+
+    Parameters
+    ----------
+    chunk_proba : np.ndarray
+        Shape: (n_chunks, n_classes)
+
+    Returns
+    -------
+    np.ndarray
+        Shape: (n_classes,)
+    """
+    if len(chunk_proba.shape) != 2:
+        raise ValueError(
+            f"Expected 2D array of shape (n_chunks, n_classes), got {chunk_proba.shape}"
+        )
+
+    return chunk_proba.mean(axis=0)
+
+
+def predict_final_class(final_proba, class_names=CLASS_NAMES, threshold=None):
+    """
+    Convert final probability vector into final class prediction.
+
+    Parameters
+    ----------
+    final_proba : np.ndarray
+        Shape: (n_classes,)
+    class_names : list[str] | None
+        Optional ordered class names
+    threshold : float | None
+        If set, predictions below this confidence are labelled "Uncertain"
+
+    Returns
+    -------
+    dict
+        {
+            "predicted_index": int,
+            "predicted_label": str or None,
+            "confidence": float,
+            "class_probabilities": dict or list
+        }
+    """
+    predicted_index = int(np.argmax(final_proba))
+    confidence = float(final_proba[predicted_index])
+
+    if class_names is not None:
+        predicted_label = class_names[predicted_index]
+        class_probabilities = {
+            class_names[i]: float(final_proba[i])
+            for i in range(len(class_names))
+        }
+    else:
+        predicted_label = None
+        class_probabilities = final_proba.tolist()
+
+    if threshold is not None and confidence < threshold:
+        predicted_label = "Uncertain"
+
+    return {
+        "predicted_index": predicted_index,
+        "predicted_label": predicted_label,
+        "confidence": confidence,
+        "class_probabilities": class_probabilities
     }
 
-    return cnn_model, history, metrics, y_pred_cnn
+
+def predict_hybrid(xgb_model, cnn_model, xgb_df, cnn_array, w=0.6, class_names=None):
+    """
+    Full hybrid prediction pipeline:
+    - XGB probabilities per chunk
+    - CNN probabilities per chunk
+    - late fusion
+    - aggregate across chunks
+    - return final prediction
+
+    Parameters
+    ----------
+    xgb_model : fitted XGBoost model
+    cnn_model : fitted CNN model
+    xgb_df : pd.DataFrame
+        One row per chunk for XGB
+    cnn_array : np.ndarray
+        One mel spectrogram per chunk for CNN
+    w : float
+        Weight for XGB in fusion
+    class_names : list[str] | None
+        Ordered class names
+
+    Returns
+    -------
+    dict
+        Includes intermediate and final outputs
+    """
+    xgb_proba = predict_xgb_proba(xgb_model, xgb_df)
+    cnn_proba = predict_cnn_proba(cnn_model, cnn_array)
+
+    fused_chunk_proba = fuse_proba(xgb_proba, cnn_proba, w=w)
+    final_proba = aggregate_chunk_proba(fused_chunk_proba)
+    final_prediction = predict_final_class(final_proba, class_names=class_names)
+
+    return {
+        "xgb_chunk_proba": xgb_proba,
+        "cnn_chunk_proba": cnn_proba,
+        "fused_chunk_proba": fused_chunk_proba,
+        "final_proba": final_proba,
+        "final_prediction": final_prediction
+    }
 
 
 
