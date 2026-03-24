@@ -8,5 +8,3 @@ uvicorn
 pandas
 tensorflow
 mlflow
-streamlit
-requests
