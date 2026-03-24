@@ -3,13 +3,14 @@ import pandas as pd
 import librosa as lb
 from smart_stethoscope.params import *
 from pathlib import Path
-from scipy.stats import skew
+from scipy.stats import skew, kurtosis
 
 
 # ===================================
 # Core Audio Preprocessing (Production)
 # Used by current live model + API
 # ===================================
+
 
 def cut_audio_data(raw_data, start, end, sr=22050):
     """
@@ -34,6 +35,81 @@ def cut_audio_data(raw_data, start, end, sr=22050):
     start_ind = min(int(start * sr), max_ind)
     end_ind = min(int(end * sr), max_ind)
     return raw_data[start_ind:end_ind]
+
+
+def extract_audio_segments(audio, start, end, diagnosis):
+    audio = cut_audio_data(audio, start, end, sr=TARGET_SAMPLING_RATE)
+
+    frames_per_segment = SEGMENT_LENGTH * TARGET_SAMPLING_RATE
+    if diagnosis == "COPD" or diagnosis == "Unknown":
+        step_size = frames_per_segment
+    else:
+        step_size = STEP_LENGTH * TARGET_SAMPLING_RATE
+
+    segments = []
+    for start_idx in range(0, len(audio) - frames_per_segment + 1, step_size):
+        end_idx = start_idx + frames_per_segment
+        segment = audio[start_idx:end_idx]
+        segments.append(segment)
+    return segments
+
+
+def compress_audio(audio):
+    mu = 255
+    return np.sign(audio) * np.log1p(mu * np.abs(audio)) / np.log1p(mu)
+
+
+def extract_audio_features(audio):
+    features = extract_numerical_audio_features(audio)
+    mel_spectograms = extract_mel_spectrogram(audio)
+    return features, mel_spectograms
+
+
+def extract_numerical_audio_features(audio):
+    features = {}
+
+    # TEMPORAL
+    rms = lb.feature.rms(y=audio)
+    features["rms_mean"] = float(np.mean(rms))
+    features["rms_std"] = float(np.std(rms))  # sound explosion
+
+    zcr = lb.feature.zero_crossing_rate(y=audio)
+    features["zcr_mean"] = float(np.mean(zcr))
+
+    # SPECTRAL
+    centroid = lb.feature.spectral_centroid(
+        y=audio, sr=TARGET_SAMPLING_RATE
+    )  # .flatten() # gemini told me to do it. centroids are 2D and we need it 1D apparently
+    features["centroid_mean"] = float(np.mean(centroid))
+    features["centroid_std"] = float(np.std(centroid))  # tone change
+
+    # SHAPE STATISTICS
+    flatness = lb.feature.spectral_flatness(y=audio)
+    features["flatness_mean"] = float(np.mean(flatness))
+    features["flatness_std"] = float(np.std(flatness))  # constant noise vs intermitent
+
+    # OTHERS
+    features["rolloff_mean"] = float(
+        np.mean(lb.feature.spectral_rolloff(y=audio, sr=TARGET_SAMPLING_RATE))
+    )
+    features["flux_mean"] = float(
+        np.mean(lb.onset.onset_strength(y=audio, sr=TARGET_SAMPLING_RATE))
+    )
+    features["bandwidth_mean"] = float(
+        np.mean(lb.feature.spectral_bandwidth(y=audio, sr=TARGET_SAMPLING_RATE))
+    )
+
+    # FORM NEW! - depend on centroid
+    features["skewness_mean"] = float(skew(centroid, axis=1)[0])
+    features["kurtosis_mean"] = float(kurtosis(centroid, axis=1)[0])
+
+    # MFCC (16, ignore 0)
+    mfccs = lb.feature.mfcc(y=audio, sr=TARGET_SAMPLING_RATE, n_mfcc=16)
+    for i in range(1, 16):
+        features[f"mfcc_{i}_mean"] = float(np.mean(mfccs[i]))
+        features[f"mfcc_{i}_std"] = float(np.std(mfccs[i]))
+
+    return features
 
 
 def pad_audio(breathing_cycle: np.ndarray):
@@ -80,8 +156,8 @@ def preprocess_audio(
 def extract_mel_spectrogram(
     breathing_cycle: np.ndarray,
     sample_rate: int = TARGET_SAMPLING_RATE,
-    n_mels: int = 64,
-    max_time_steps: int = 200
+    n_mels: int = 128,
+    max_time_steps: int = 200,
 ) -> np.ndarray:
     """
     Convert one breathing-cycle waveform into the mel spectrogram format
@@ -113,9 +189,7 @@ def extract_mel_spectrogram(
         ready for CNN input.
     """
     mel_spec = lb.feature.melspectrogram(
-        y=breathing_cycle,
-        sr=sample_rate,
-        n_mels=n_mels
+        y=breathing_cycle, sr=sample_rate, n_mels=n_mels
     )
 
     mel_spec_db = lb.power_to_db(mel_spec, ref=np.max)
@@ -125,9 +199,7 @@ def extract_mel_spectrogram(
     if current_time_steps < max_time_steps:
         pad_width = max_time_steps - current_time_steps
         mel_spec_db = np.pad(
-            mel_spec_db,
-            pad_width=((0, 0), (0, pad_width)),
-            mode="constant"
+            mel_spec_db, pad_width=((0, 0), (0, pad_width)), mode="constant"
         )
     elif current_time_steps > max_time_steps:
         mel_spec_db = mel_spec_db[:, :max_time_steps]
@@ -141,7 +213,7 @@ def build_mel_spectrogram_dataset(
     padded_audio: np.ndarray,
     sample_rate: int = TARGET_SAMPLING_RATE,
     n_mels: int = 64,
-    max_time_steps: int = 200
+    max_time_steps: int = 200,
 ) -> np.ndarray:
     """
     Convert an array of padded breathing cycles into a CNN-ready batch of
@@ -172,7 +244,7 @@ def build_mel_spectrogram_dataset(
             breathing_cycle=breathing_cycle,
             sample_rate=sample_rate,
             n_mels=n_mels,
-            max_time_steps=max_time_steps
+            max_time_steps=max_time_steps,
         )
         mel_specs.append(mel)
 
@@ -180,9 +252,10 @@ def build_mel_spectrogram_dataset(
 
 
 # ===================================
-# Optional Audio Feature Extraction
+# Optional Audio Feature Extraction
 # (for use in model exploration)
 # ===================================
+
 
 def extract_mfcc_feature_map(padded_audio: np.ndarray) -> np.ndarray:
     """
@@ -240,11 +313,7 @@ def extract_mfcc_summary_features(df, audio_folder, n_mfcc=13):
 
         signal, sample_rate = lb.load(file_path, sr=None)
 
-        mfcc = lb.feature.mfcc(
-            y=signal,
-            sr=sample_rate,
-            n_mfcc=n_mfcc
-        )
+        mfcc = lb.feature.mfcc(y=signal, sr=sample_rate, n_mfcc=n_mfcc)
 
         mfcc_mean = np.mean(mfcc, axis=1)
         mfcc_std = np.std(mfcc, axis=1)
