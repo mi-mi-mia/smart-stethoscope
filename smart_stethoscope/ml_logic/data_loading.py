@@ -219,16 +219,21 @@ def load_audio_data():
     all_features = []
     all_mel_spectograms = []
     for file in raw_audio_path.glob("*.txt"):
+        parts = file.stem.split("_")
+        pid = str(parts[0])
+        if pid in DEMO_BLACKLIST:
+            print(
+                Fore.BLUE + f"\nSkipping blacklisted patient: {pid}" + Style.RESET_ALL
+            )
+            continue
+
         df = pd.read_csv(
             file,
             sep="\t",
             names=["start", "end", "crackles", "wheezes"],
         )
-        # TODO: Remove blacklist patients
         start = df["start"].iloc[0]
         end = df["end"].iloc[-1]
-        parts = file.stem.split("_")
-        pid = str(parts[0])
         diagnosis = diagnosis_map.get(pid, "Unknown")
         audio_file = file.with_suffix(".wav")
         audio, sr = lb.load(audio_file, sr=TARGET_SAMPLING_RATE)

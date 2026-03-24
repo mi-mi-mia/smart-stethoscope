@@ -4,6 +4,7 @@ TARGET_SAMPLING_RATE = 12000
 SEGMENT_LENGTH = 6
 STEP_LENGTH = 2
 AUDIO_LENGTH = 6
+DEMO_BLACKLIST = ["142", "191", "182"]
 
 
 def get_repo_root() -> Path:
