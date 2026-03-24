@@ -11,6 +11,9 @@ from scipy.stats import skew, kurtosis
 # Used by current live model + API
 # ===================================
 
+MU = 255
+LOG_MU = np.log1p(MU)
+
 
 def cut_audio_data(raw_data, start, end, sr=22050):
     """
@@ -41,73 +44,80 @@ def extract_audio_segments(audio, start, end, diagnosis):
     audio = cut_audio_data(audio, start, end, sr=TARGET_SAMPLING_RATE)
 
     frames_per_segment = SEGMENT_LENGTH * TARGET_SAMPLING_RATE
-    if diagnosis == "COPD" or diagnosis == "Unknown":
-        step_size = frames_per_segment
-    else:
-        step_size = STEP_LENGTH * TARGET_SAMPLING_RATE
+    step_size = (
+        frames_per_segment
+        if diagnosis in {"COPD", "Unknown"}
+        else STEP_LENGTH * TARGET_SAMPLING_RATE
+    )
 
-    segments = []
-    for start_idx in range(0, len(audio) - frames_per_segment + 1, step_size):
-        end_idx = start_idx + frames_per_segment
-        segment = audio[start_idx:end_idx]
-        segments.append(segment)
+    n_segments = (len(audio) - frames_per_segment) // step_size + 1
+    if n_segments <= 0:
+        return []
+
+    shape = (n_segments, frames_per_segment)
+    strides = (audio.strides[0] * step_size, audio.strides[0])
+
+    segments = np.lib.stride_tricks.as_strided(audio, shape=shape, strides=strides)
+
     return segments
 
 
 def compress_audio(audio):
-    mu = 255
-    return np.sign(audio) * np.log1p(mu * np.abs(audio)) / np.log1p(mu)
+    return np.sign(audio) * np.log1p(MU * np.abs(audio)) / LOG_MU
 
 
 def extract_audio_features(audio):
-    features = extract_numerical_audio_features(audio)
-    mel_spectograms = extract_mel_spectrogram(audio)
-    return features, mel_spectograms
+    return (
+        extract_numerical_audio_features(audio),
+        extract_mel_spectrogram(audio),
+    )
 
 
 def extract_numerical_audio_features(audio):
     features = {}
 
-    # TEMPORAL
-    rms = lb.feature.rms(y=audio)
-    features["rms_mean"] = float(np.mean(rms))
-    features["rms_std"] = float(np.std(rms))  # sound explosion
+    # Precompute STFT magnitude
+    S = np.abs(lb.stft(audio))
 
+    # TEMPORAL
+    rms = lb.feature.rms(S=S)
     zcr = lb.feature.zero_crossing_rate(y=audio)
-    features["zcr_mean"] = float(np.mean(zcr))
+
+    features["rms_mean"] = float(rms.mean())
+    features["rms_std"] = float(rms.std())
+    features["zcr_mean"] = float(zcr.mean())
 
     # SPECTRAL
-    centroid = lb.feature.spectral_centroid(
-        y=audio, sr=TARGET_SAMPLING_RATE
-    )  # .flatten() # gemini told me to do it. centroids are 2D and we need it 1D apparently
-    features["centroid_mean"] = float(np.mean(centroid))
-    features["centroid_std"] = float(np.std(centroid))  # tone change
+    centroid = lb.feature.spectral_centroid(S=S, sr=TARGET_SAMPLING_RATE)
+    bandwidth = lb.feature.spectral_bandwidth(S=S, sr=TARGET_SAMPLING_RATE)
+    rolloff = lb.feature.spectral_rolloff(S=S, sr=TARGET_SAMPLING_RATE)
+    flatness = lb.feature.spectral_flatness(S=S)
 
-    # SHAPE STATISTICS
-    flatness = lb.feature.spectral_flatness(y=audio)
-    features["flatness_mean"] = float(np.mean(flatness))
-    features["flatness_std"] = float(np.std(flatness))  # constant noise vs intermitent
+    features["centroid_mean"] = float(centroid.mean())
+    features["centroid_std"] = float(centroid.std())
 
-    # OTHERS
-    features["rolloff_mean"] = float(
-        np.mean(lb.feature.spectral_rolloff(y=audio, sr=TARGET_SAMPLING_RATE))
-    )
-    features["flux_mean"] = float(
-        np.mean(lb.onset.onset_strength(y=audio, sr=TARGET_SAMPLING_RATE))
-    )
-    features["bandwidth_mean"] = float(
-        np.mean(lb.feature.spectral_bandwidth(y=audio, sr=TARGET_SAMPLING_RATE))
-    )
+    features["flatness_mean"] = float(flatness.mean())
+    features["flatness_std"] = float(flatness.std())
 
-    # FORM NEW! - depend on centroid
+    features["rolloff_mean"] = float(rolloff.mean())
+    features["bandwidth_mean"] = float(bandwidth.mean())
+
+    # Flux (onset strength)
+    flux = lb.onset.onset_strength(S=S, sr=TARGET_SAMPLING_RATE)
+    features["flux_mean"] = float(flux.mean())
+
+    # SHAPE
     features["skewness_mean"] = float(skew(centroid, axis=1)[0])
     features["kurtosis_mean"] = float(kurtosis(centroid, axis=1)[0])
 
-    # MFCC (16, ignore 0)
-    mfccs = lb.feature.mfcc(y=audio, sr=TARGET_SAMPLING_RATE, n_mfcc=16)
+    # MFCC (reuses S implicitly)
+    mfccs = lb.feature.mfcc(S=lb.power_to_db(S**2), n_mfcc=16)
+
+    mfcc_mean = mfccs.mean(axis=1)
+    mfcc_std = mfccs.std(axis=1)
     for i in range(1, 16):
-        features[f"mfcc_{i}_mean"] = float(np.mean(mfccs[i]))
-        features[f"mfcc_{i}_std"] = float(np.std(mfccs[i]))
+        features[f"mfcc_{i}_mean"] = float(mfcc_mean[i])
+        features[f"mfcc_{i}_std"] = float(mfcc_std[i])
 
     return features
 
