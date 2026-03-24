@@ -3,7 +3,6 @@ from pathlib import Path
 TARGET_SAMPLING_RATE = 12000
 SEGMENT_LENGTH = 6
 STEP_LENGTH = 2
-AUDIO_LENGTH = 6
 DEMO_BLACKLIST = ["142", "191", "182"]
 
 
@@ -26,15 +25,11 @@ RAW_AUDIO_PATH = (
     repo_root
     / "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/audio_and_txt_files/"
 )
-PREPROCESSED_AUDIO_PATH = repo_root / "preprocessed_data/audio_breathing_cycles/"
-PREPROCESSED_PADDED_AUTIO_PATH = (
-    repo_root / "preprocessed_data/padded_audio_breathing_cycles/"
-)
 DIAGNOSIS_PATH = (
     repo_root
     / "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
 )
-DEMOGRAPHIC_DATA_PATH = repo_root / "raw_data/demographic_info.txt"
+
 CACHE_PATH = repo_root / "preprocessed_data/"
 
 N_MFCC = 13  # or whatever you trained with
