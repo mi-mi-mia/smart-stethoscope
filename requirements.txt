@@ -8,3 +8,4 @@ uvicorn
 pandas
 tensorflow
 mlflow
+xgboost
