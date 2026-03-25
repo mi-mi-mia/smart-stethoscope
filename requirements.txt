@@ -9,3 +9,4 @@ pandas
 tensorflow
 mlflow
 xgboost
+google-cloud-storage

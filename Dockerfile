@@ -1,17 +1,16 @@
-#TO DO - does the FROM line match the version running? in terminaly python -- version
-FROM python:3.12
+FROM python:3.10.6
 
 # Install requirements
-#TO DO - did we add anything else that needs copying over when updating?
 COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy our code
 COPY smart_stethoscope smart_stethoscope
-#TO DO delete COPY models models as we load from GCSE, it's adding weight
-COPY models models
 COPY setup.py setup.py
 
-#TO DO check entry point name still references the file - if the fast.py name was changed. (not no py needed below)
+# Set model path
+ENV MODEL_PATH=gs://smart-stethoscope-models/best_cnn_model.keras
+
+# Start the API
 CMD ["sh", "-c", "uvicorn smart_stethoscope.api.fast:app --host 0.0.0.0 --port ${PORT}"]

@@ -13,8 +13,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 from smart_stethoscope.params import CLASS_NAMES
 
-
-DEFAULT_XGB_WEIGHT = 0.8
+from smart_stethoscope.params import DEFAULT_XGB_WEIGHT, CLASS_NAMES
 
 
 # ================================
@@ -268,7 +267,7 @@ def train_cnn_model(
 # ================================
 # Train the hybrid model
 # ================================
-def train_final_hybrid_models(X, y, mel_specs, groups, n_splits=3, random_state=42):
+def train_final_hybrid_models(X, y, mel_spec, groups, n_splits=3, random_state=42):
     """
     Train final XGB and CNN models using one stratified grouped train/val split.
     No test split here - this is for FINAL MODEL training only.
@@ -303,8 +302,8 @@ def train_final_hybrid_models(X, y, mel_specs, groups, n_splits=3, random_state=
     # -----------------------------
     # CNN inputs (same indices)
     # -----------------------------
-    X_train_img = mel_specs[train_idx]
-    X_val_img = mel_specs[val_idx]
+    X_train_img = mel_spec[train_idx]
+    X_val_img = mel_spec[val_idx]
 
     print("Train classes:", np.sort(np.unique(y_train)))
     print("Val classes:  ", np.sort(np.unique(y_val)))

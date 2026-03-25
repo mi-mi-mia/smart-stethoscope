@@ -8,11 +8,11 @@ from tensorflow import keras
 
 from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 from smart_stethoscope.params import TARGET_SAMPLING_RATE
+from google.cloud import storage
 
-# Load once at startup.
-MODEL_PATH = os.getenv("MODEL_PATH", "models/best_cnn_model.keras")
-xgb_model = pickle.load(open("models/xgb_model.pkl","rb")) #PLACEHOLDER
-cnn_model = keras.models.load_model(MODEL_PATH) #PLACEHOLDER
+# Load once at startup
+MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope-models/best_cnn_model.keras")
+model = keras.models.load_model(MODEL_PATH)
 
 
 app = FastAPI()
