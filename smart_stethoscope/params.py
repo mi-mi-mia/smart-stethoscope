@@ -30,6 +30,4 @@ DIAGNOSIS_PATH = (
     / "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
 )
 
-CACHE_PATH = repo_root / "preprocessed_data/"
-
 CLASS_NAMES = ["COPD", "Pneumonia", "Healthy", "URTI", "Bronchiectasis"]
