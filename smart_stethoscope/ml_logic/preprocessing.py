@@ -122,59 +122,38 @@ def extract_numerical_audio_features(audio):
 
 
 def extract_mel_spectrogram(
-    breathing_cycle: np.ndarray,
+    audio_segment: np.ndarray,
     sample_rate: int = TARGET_SAMPLING_RATE,
     n_mels: int = 128,
-    max_time_steps: int = 200,
 ) -> np.ndarray:
     """
-    Convert one breathing-cycle waveform into the mel spectrogram format
-    used by the production CNN model.
-
-    Steps
-    -----
-    - Compute mel spectrogram from waveform
-    - Convert power spectrogram to dB scale
-    - Pad or crop the time axis to a fixed width
-    - Add channel dimension for CNN input
+    Convert one fixed-length audio segment into a mel spectrogram
+    for CNN input.
 
     Parameters
     ----------
-    breathing_cycle : np.ndarray
-        One breathing-cycle waveform.
+    audio_segment : np.ndarray
+        One fixed-length audio segment.
     sample_rate : int, default=TARGET_SAMPLING_RATE
         Sampling rate of the waveform.
-    n_mels : int, default=64
+    n_mels : int, default=128
         Number of mel frequency bins.
-    max_time_steps : int, default=200
-        Fixed width for the spectrogram. Shorter spectrograms are padded
-        with zeros on the right; longer ones are cropped on the right.
 
     Returns
     -------
     np.ndarray
-        Mel spectrogram of shape (n_mels, max_time_steps, 1),
+        Mel spectrogram of shape (n_mels, time_steps, 1),
         ready for CNN input.
     """
     mel_spec = lb.feature.melspectrogram(
-        y=breathing_cycle, sr=sample_rate, n_mels=n_mels
+        y=audio_segment,
+        sr=sample_rate,
+        n_mels=n_mels,
     )
 
     mel_spec_db = lb.power_to_db(mel_spec, ref=np.max)
 
-    current_time_steps = mel_spec_db.shape[1]
-
-    if current_time_steps < max_time_steps:
-        pad_width = max_time_steps - current_time_steps
-        mel_spec_db = np.pad(
-            mel_spec_db, pad_width=((0, 0), (0, pad_width)), mode="constant"
-        )
-    elif current_time_steps > max_time_steps:
-        mel_spec_db = mel_spec_db[:, :max_time_steps]
-
-    mel_spec_db = mel_spec_db[..., np.newaxis]
-
-    return mel_spec_db.astype(np.float32)
+    return mel_spec_db[..., np.newaxis].astype(np.float32)
 
 
 def audio_preprocessing(audio, sampling_rate, start, end):
@@ -199,6 +178,6 @@ def audio_preprocessing(audio, sampling_rate, start, end):
         mel_list[i] = mel
 
     features_df = pd.DataFrame(features_list)
-    mel_spectograms = np.stack(mel_list).astype(np.float32)
+    mel_spectrograms = np.stack(mel_list).astype(np.float32)
 
-    return features_df, mel_spectograms
+    return features_df, mel_spectrograms
