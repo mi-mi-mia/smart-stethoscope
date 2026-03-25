@@ -2,15 +2,11 @@
 # Imports
 # ================================
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, accuracy_score, f1_score
-from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import StratifiedGroupKFold
 from tensorflow.keras import models, layers
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 
-
-CLASS_NAMES = ["Bronchiectasis", "COPD", "Healthy", "Pneumonia", "URTI"]
 DEFAULT_XGB_WEIGHT = 0.8
 
 
@@ -23,7 +19,7 @@ pass
 
 
 # ================================
-# Training models
+# Build and train individual models
 # ================================
 def build_xgb_model(num_classes: int) -> xgb.XGBClassifier:
     """
@@ -56,7 +52,7 @@ def build_xgb_model(num_classes: int) -> xgb.XGBClassifier:
 
 def train_xgb_model(X_train, y_train, X_val=None, y_val=None):
     """
-    Train XGBoost model.
+    Train XGBoost model using provided train/validation split.
 
     Parameters
     ----------
@@ -238,6 +234,88 @@ def train_cnn_model(
 
     return cnn_model
 
+
+
+# ================================
+# Train the hybrid model
+# ================================
+def train_final_hybrid_models(
+    X,
+    y,
+    mel_spectrograms,
+    groups,
+    n_splits=3,
+    random_state=42
+):
+    """
+    Train final XGB and CNN models using one stratified grouped train/val split.
+    No test split here - this is for FINAL MODEL training only.
+    """
+
+    # Safe arrays for splitter
+    y_array = y.to_numpy() if hasattr(y, "to_numpy") else np.asarray(y)
+    groups_array = groups.to_numpy() if hasattr(groups, "to_numpy") else np.asarray(groups)
+
+    # One grouped + stratified split
+    sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    train_idx, val_idx = next(sgkf.split(X, y_array, groups_array))
+
+    # -----------------------------
+    # XGB inputs
+    # -----------------------------
+    if hasattr(X, "iloc"):
+        X_train = X.iloc[train_idx]
+        X_val = X.iloc[val_idx]
+    else:
+        X_train = X[train_idx]
+        X_val = X[val_idx]
+
+    if hasattr(y, "iloc"):
+        y_train = y.iloc[train_idx]
+        y_val = y.iloc[val_idx]
+    else:
+        y_train = y_array[train_idx]
+        y_val = y_array[val_idx]
+
+    # -----------------------------
+    # CNN inputs (same indices)
+    # -----------------------------
+    X_train_img = mel_spectrograms[train_idx]
+    X_val_img = mel_spectrograms[val_idx]
+
+    print("Train classes:", np.sort(np.unique(y_train)))
+    print("Val classes:  ", np.sort(np.unique(y_val)))
+    print("Train X shape:", X_train.shape)
+    print("Val X shape:  ", X_val.shape)
+    print("Train mel shape:", X_train_img.shape)
+    print("Val mel shape:  ", X_val_img.shape)
+
+    # -----------------------------
+    # Train XGB
+    # -----------------------------
+    xgb_model = train_xgb_model(
+        X_train=X_train,
+        y_train=y_train,
+        X_val=X_val,
+        y_val=y_val
+    )
+
+    # -----------------------------
+    # Train CNN
+    # -----------------------------
+    cnn_model = train_cnn_model(
+        X_train_img=X_train_img,
+        y_train=y_train,
+        X_val_img=X_val_img,
+        y_val=y_val
+    )
+
+    return {
+        "xgb_model": xgb_model,
+        "cnn_model": cnn_model,
+        "train_idx": train_idx,
+        "val_idx": val_idx
+    }
 
 
 # ================================
