@@ -178,130 +178,28 @@ def extract_mel_spectrogram(
     return mel_spec_db.astype(np.float32)
 
 
-def build_mel_spectrogram_dataset(
-    padded_audio: np.ndarray,
-    sample_rate: int = TARGET_SAMPLING_RATE,
-    n_mels: int = 64,
-    max_time_steps: int = 200,
-) -> np.ndarray:
-    """
-    Convert an array of padded breathing cycles into a CNN-ready batch of
-    mel spectrograms.
-
-    Parameters
-    ----------
-    padded_audio : np.ndarray
-        Array of shape (num_cycles, num_samples), where each row is one
-        breathing-cycle waveform.
-    sample_rate : int, default=TARGET_SAMPLING_RATE
-        Sampling rate of the waveforms.
-    n_mels : int, default=64
-        Number of mel frequency bins.
-    max_time_steps : int, default=200
-        Fixed width for each spectrogram.
-
-    Returns
-    -------
-    np.ndarray
-        Array of shape (num_cycles, n_mels, max_time_steps, 1)
-        suitable for CNN prediction.
-    """
-    mel_specs = []
-
-    for breathing_cycle in padded_audio:
-        mel = extract_mel_spectrogram(
-            breathing_cycle=breathing_cycle,
-            sample_rate=sample_rate,
-            n_mels=n_mels,
-            max_time_steps=max_time_steps,
+def audio_preprocessing(audio, sampling_rate, start, end):
+    if sampling_rate != TARGET_SAMPLING_RATE:
+        audio = lb.resample(
+            y=audio, orig_sr=sampling_rate, target_sr=TARGET_SAMPLING_RATE
         )
-        mel_specs.append(mel)
+    audio_segments = extract_audio_segments(audio, start, end, diagnosis="Unknown")
 
-    return np.stack(mel_specs).astype(np.float32)
+    if len(audio_segments) == 0:
+        return pd.DataFrame(), np.empty((0,), dtype=np.float32)
 
+    n = len(audio_segments)
+    features_list = [None] * n
+    mel_list = [None] * n
 
-# ===================================
-# Optional Audio Feature Extraction
-# (for use in model exploration)
-# ===================================
+    for i, segment in enumerate(audio_segments):
+        segment_compressed = compress_audio(segment)
+        features, mel = extract_audio_features(segment_compressed)
 
+        features_list[i] = features
+        mel_list[i] = mel
 
-def extract_mfcc_feature_map(padded_audio: np.ndarray) -> np.ndarray:
-    """
-    Extract full MFCC matrices from padded breathing cycles.
-    Each breathing cycle is converted into an MFCC array of shape
-    (n_mfcc, time_frames), preserving temporal structure.
+    features_df = pd.DataFrame(features_list)
+    mel_spectograms = np.stack(mel_list).astype(np.float32)
 
-    Returns
-    -------
-    np.ndarray
-        Array of shape (num_cycles, n_mfcc, time_frames), suitable for
-        experimentation with CNNs or other deep learning models.
-
-    Notes
-    -----
-    This function is for model exploration and is not currently used in
-    production inference.
-    """
-    n_mfcc = 13
-    mfccs = []
-
-    for breathing_cycle in padded_audio:
-        mfcc = lb.feature.mfcc(
-            y=breathing_cycle, sr=TARGET_SAMPLING_RATE, n_mfcc=n_mfcc
-        )
-        mfccs.append(mfcc)
-
-    return np.stack(mfccs)
-
-
-def extract_mfcc_summary_features(df, audio_folder, n_mfcc=13):
-    """
-    Extract aggregated MFCC summary features from pre-cut breathing-cycle .wav files.
-
-    For each cycle file:
-    - load waveform
-    - compute MFCC matrix
-    - summarise each coefficient across time using mean, std, skewness, and max
-
-    Returns
-    -------
-    pd.DataFrame
-        One row per cycle_filename with statistical MFCC features suitable for
-        classical tabular models such as Logistic Regression.
-
-    Notes
-    -----
-    This function is intended for model exploration and baseline modelling.
-    It is not currently used in production inference.
-    """
-    mfcc_rows = []
-
-    for cycle_filename in df["cycle_filename"]:
-        file_path = Path(audio_folder) / f"{cycle_filename}.wav"
-
-        signal, sample_rate = lb.load(file_path, sr=None)
-
-        mfcc = lb.feature.mfcc(y=signal, sr=sample_rate, n_mfcc=n_mfcc)
-
-        mfcc_mean = np.mean(mfcc, axis=1)
-        mfcc_std = np.std(mfcc, axis=1)
-        mfcc_skew = skew(mfcc, axis=1)
-        mfcc_max = np.max(mfcc, axis=1)
-
-        combined = np.concatenate([mfcc_mean, mfcc_std, mfcc_skew, mfcc_max])
-
-        mfcc_rows.append([cycle_filename] + list(combined))
-
-    columns = ["cycle_filename"]
-
-    for i in range(1, n_mfcc + 1):
-        columns.append(f"mfcc_{i}_mean")
-    for i in range(1, n_mfcc + 1):
-        columns.append(f"mfcc_{i}_std")
-    for i in range(1, n_mfcc + 1):
-        columns.append(f"mfcc_{i}_skew")
-    for i in range(1, n_mfcc + 1):
-        columns.append(f"mfcc_{i}_max")
-
-    return pd.DataFrame(mfcc_rows, columns=columns)
+    return features_df, mel_spectograms
