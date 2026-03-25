@@ -7,9 +7,7 @@ from tensorflow import keras
 from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 
 # Load once at startup
-MODEL_PATH = os.getenv(
-    "MODEL_PATH", "gs://smart-stethoscope-models/best_cnn_model.keras"
-)
+MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/best_cnn_model.keras")
 model = keras.models.load_model(MODEL_PATH)
 
 
