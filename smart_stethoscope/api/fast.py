@@ -5,15 +5,12 @@ import pandas as pd
 import librosa
 from fastapi import FastAPI, UploadFile, File
 from tensorflow import keras
-from smart_stethoscope.ml_logic.audio_preprocessing import (
-    preprocess_audio,
-    build_mel_spectrogram_dataset
-)
+from smart_stethoscope.ml_logic.preprocessing import audio_preprocessing
 
 # ================================
 # Model loading
 # ================================
-MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope-models/best_cnn_model.keras")
+MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/best_cnn_model.keras")
 model = keras.models.load_model(MODEL_PATH)
 
 DISEASE_MAPPING_INV = {
@@ -56,11 +53,15 @@ async def predict_audio(
         names=["start", "end", "crackles", "wheezes"]
     )
 
-    # 4. Preprocess: resample, slice cycles, pad/trim
-    padded_audios = preprocess_audio(audio, sr, annotations)
+    # 4. Preprocess each cycle and collect mel spectrograms
+    mel_specs = []
+    for _, row in annotations.iterrows():
+        _, mel_spec = audio_preprocessing(audio, sr, row["start"], row["end"])
+        if mel_spec.shape[0] > 0:
+            mel_specs.append(mel_spec)
 
-    # 5. Convert breathing cycles into mel spectrograms for CNN
-    features = build_mel_spectrogram_dataset(padded_audios)
+    # 5. Stack all cycles into a single array for CNN input
+    features = np.concatenate(mel_specs, axis=0)
 
     # 6. Predict per cycle — CNN returns probabilities, argmax gives class
     probabilities = model.predict(features)
