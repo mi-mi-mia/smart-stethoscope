@@ -3,6 +3,7 @@
 # ================================
 import numpy as np
 import xgboost as xgb
+from concurrent.futures import ThreadPoolExecutor
 
 from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.utils.class_weight import compute_sample_weight
@@ -10,6 +11,7 @@ from sklearn.utils.class_weight import compute_sample_weight
 from tensorflow.keras import models, layers
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
+from smart_stethoscope.params import CLASS_NAMES
 
 
 DEFAULT_XGB_WEIGHT = 0.8
@@ -504,8 +506,13 @@ def predict_hybrid(
     dict
         Includes intermediate and final outputs
     """
-    xgb_proba = predict_xgb_proba(xgb_model, xgb_df)
-    cnn_proba = predict_cnn_proba(cnn_model, cnn_array)
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(predict_xgb_proba, xgb_model, xgb_df),
+            executor.submit(predict_cnn_proba, cnn_model, cnn_array),
+        ]
+        results = [f.result() for f in futures]
+    xgb_proba, cnn_proba = results
 
     fused_chunk_proba = fuse_proba(xgb_proba, cnn_proba, w=w)
     final_proba = aggregate_chunk_proba(fused_chunk_proba)
