@@ -3,6 +3,7 @@ from colorama import Fore, Style
 import pandas as pd
 import numpy as np
 import librosa as lb
+from joblib import Parallel, delayed
 from smart_stethoscope.params import *
 from smart_stethoscope.ml_logic.audio_preprocessing import (
     extract_audio_segments,
@@ -53,9 +54,6 @@ def process_file(file, diagnosis_map):
     return features_list, mel_list
 
 
-from joblib import Parallel, delayed
-
-
 def load_audio_data():
     raw_audio_path = RAW_AUDIO_PATH
 
@@ -78,6 +76,10 @@ def load_audio_data():
         all_mel_spectograms.extend(mel_list)
 
     features_df = pd.DataFrame(all_features)
-    mel_spectograms_array = np.stack(all_mel_spectograms).astype(np.float32)
+    mel_spectograms = np.stack(all_mel_spectograms).astype(np.float32)
 
-    return features_df, mel_spectograms_array
+    mask = features_df["diagnosis"].isin(CLASSES_TO_KEEP).values
+    features_filtered = features_df[mask].reset_index(drop=True)
+    mel_spectogram_filtered = mel_spectograms[mask]
+
+    return features_filtered, mel_spectogram_filtered
