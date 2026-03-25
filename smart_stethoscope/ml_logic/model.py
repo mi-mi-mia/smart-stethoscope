@@ -13,8 +13,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 from smart_stethoscope.params import CLASS_NAMES
 
-
-DEFAULT_XGB_WEIGHT = 0.8
+from smart_stethoscope.params import DEFAULT_XGB_WEIGHT, CLASS_NAMES
 
 
 # ================================
