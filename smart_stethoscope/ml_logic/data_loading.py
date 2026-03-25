@@ -1,11 +1,10 @@
-from pathlib import Path
 from colorama import Fore, Style
 import pandas as pd
 import numpy as np
 import librosa as lb
 from joblib import Parallel, delayed
 from smart_stethoscope.params import *
-from smart_stethoscope.ml_logic.audio_preprocessing import (
+from smart_stethoscope.ml_logic.preprocessing import (
     extract_audio_segments,
     compress_audio,
     extract_audio_features,
@@ -36,11 +35,11 @@ def process_file(file, diagnosis_map):
     audio_segments = extract_audio_segments(audio, start, end, diagnosis)
 
     features_list = []
-    mel_list = []
+    mel_spec_list = []
 
     for segment in audio_segments:
         segment_compressed = compress_audio(segment)
-        features, mel = extract_audio_features(segment_compressed)
+        features, mel_spec = extract_audio_features(segment_compressed)
 
         features = {
             **features,
@@ -49,12 +48,12 @@ def process_file(file, diagnosis_map):
         }
 
         features_list.append(features)
-        mel_list.append(mel)
+        mel_spec_list.append(mel_spec)
 
-    return features_list, mel_list
+    return features_list, mel_spec_list
 
 
-def load_audio_data():
+def load_and_preprocess_raw_audio_data():
     raw_audio_path = RAW_AUDIO_PATH
 
     patient_data = pd.read_csv(DIAGNOSIS_PATH, names=["patient_id", "diagnosis"])
@@ -69,17 +68,17 @@ def load_audio_data():
     )
 
     all_features = []
-    all_mel_spectograms = []
+    all_mel_spec = []
 
-    for features_list, mel_list in results:
+    for features_list, mel_spec_list in results:
         all_features.extend(features_list)
-        all_mel_spectograms.extend(mel_list)
+        all_mel_spec.extend(mel_spec_list)
 
     features_df = pd.DataFrame(all_features)
-    mel_spectograms = np.stack(all_mel_spectograms).astype(np.float32)
+    mel_spec = np.stack(all_mel_spec).astype(np.float32)
 
-    mask = features_df["diagnosis"].isin(CLASSES_TO_KEEP).values
+    mask = features_df["diagnosis"].isin(CLASS_NAMES).values
     features_filtered = features_df[mask].reset_index(drop=True)
-    mel_spectogram_filtered = mel_spectograms[mask]
+    mel_spec_filtered = mel_spec[mask]
 
-    return features_filtered, mel_spectogram_filtered
+    return features_filtered, mel_spec_filtered

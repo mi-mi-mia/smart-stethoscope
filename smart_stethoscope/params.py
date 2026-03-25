@@ -4,6 +4,7 @@ TARGET_SAMPLING_RATE = 12000
 SEGMENT_LENGTH = 6
 STEP_LENGTH = 2
 DEMO_BLACKLIST = ["142", "191", "182"]
+DEFAULT_XGB_WEIGHT = 0.8
 
 
 def get_repo_root() -> Path:
@@ -30,6 +31,4 @@ DIAGNOSIS_PATH = (
     / "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
 )
 
-CACHE_PATH = repo_root / "preprocessed_data/"
-
-CLASSES_TO_KEEP = ["COPD", "Pneumonia", "Healthy", "URTI", "Bronchiectasis"]
+CLASS_NAMES = ["Bronchiectasis", "COPD", "Healthy", "Pneumonia", "URTI"]

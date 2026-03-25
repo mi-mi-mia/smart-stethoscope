@@ -1,311 +1,183 @@
-import librosa
 import numpy as np
 import pandas as pd
-from scipy.stats import skew
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
-import joblib
-from pathlib import Path
-
-# ─── Constants ────────────────────────────────────────────────────────────────
-
-DISEASE_MAPPING = {
-    'Healthy': 0,
-    'COPD': 1,
-    'URTI': 2,
-    'Bronchiectasis': 3,
-    'Pneumonia': 4,
-    'Bronchiolitis': 5,
-}
-DISEASES_TO_DROP = {'Asthma', 'LRTI'}
+import librosa as lb
+from smart_stethoscope.params import *
+from scipy.stats import skew, kurtosis
 
 
-# ─── Transformers ─────────────────────────────────────────────────────────────
+# ===================================
+# Core Audio Preprocessing (Production)
+# Used by current live model + API
+# ===================================
 
-class ColumnEncoder(BaseEstimator, TransformerMixin):
+MU = 255
+LOG_MU = np.log1p(MU)
+
+
+def cut_audio_data(raw_data, start, end, sr=22050):
     """
-    Encodes categorical columns. Run on full data before train/test split.
+    Slices a numpy array of audio data using start and end timestamps.
 
-    - Maps 'disease' to integer using DISEASE_MAPPING
-    - Drops rows where disease is in DISEASES_TO_DROP (Asthma, LRTI)
-    - Label encodes 'sex' (M=0, F=1)
-    - One-hot encodes 'chest_location'
+    Parameters
+    ----------
+    raw_data : np.array
+        Numpy array of audio sample
+    start : float
+        Start time in seconds
+    end : float
+        End time in seconds
+    sr : int
+        Sampling rate (default 22050)
 
-    No statistics are learned from the data, so there is no leakage risk
-    running this pre-split.
+    Returns
+    -------
+    np.array : sliced audio data
     """
+    max_ind = len(raw_data)
+    start_ind = min(int(start * sr), max_ind)
+    end_ind = min(int(end * sr), max_ind)
+    return raw_data[start_ind:end_ind]
 
-    def __init__(self):
-        self.ohe = OneHotEncoder(sparse_output=False)
-        self.le = LabelEncoder()
 
-    def fit(self, X, y=None):
-        X = X[~X['disease'].isin(DISEASES_TO_DROP)]
-        self.ohe.fit(X[['chest_location']])
-        self.le.fit(X['sex'])
-        return self
+def extract_audio_segments(audio, start, end, diagnosis):
+    audio = cut_audio_data(audio, start, end, sr=TARGET_SAMPLING_RATE)
 
-    def transform(self, X, y=None):
-        X = X.copy()
-        X = X[~X['disease'].isin(DISEASES_TO_DROP)].reset_index(drop=True)
-        X['disease'] = X['disease'].map(DISEASE_MAPPING)
-        X['sex'] = self.le.transform(X['sex'])
-        encoded = self.ohe.transform(X[['chest_location']])
-        encoded_df = pd.DataFrame(
-            encoded,
-            columns=self.ohe.get_feature_names_out(['chest_location']),
-            index=X.index
+    frames_per_segment = SEGMENT_LENGTH * TARGET_SAMPLING_RATE
+    step_size = (
+        frames_per_segment
+        if diagnosis in {"COPD", "Unknown"}
+        else STEP_LENGTH * TARGET_SAMPLING_RATE
+    )
+
+    n_segments = (len(audio) - frames_per_segment) // step_size + 1
+    if n_segments <= 0:
+        return []
+
+    shape = (n_segments, frames_per_segment)
+    strides = (audio.strides[0] * step_size, audio.strides[0])
+
+    segments = np.lib.stride_tricks.as_strided(audio, shape=shape, strides=strides)
+
+    return segments
+
+
+def compress_audio(audio):
+    return np.sign(audio) * np.log1p(MU * np.abs(audio)) / LOG_MU
+
+
+def extract_audio_features(audio):
+    return (
+        extract_numerical_audio_features(audio),
+        extract_mel_spec(audio),
+    )
+
+
+def extract_numerical_audio_features(audio):
+    features = {}
+
+    # Precompute STFT magnitude
+    S = np.abs(lb.stft(audio))
+
+    # TEMPORAL
+    rms = lb.feature.rms(S=S)
+    zcr = lb.feature.zero_crossing_rate(y=audio)
+
+    features["rms_mean"] = float(rms.mean())
+    features["rms_std"] = float(rms.std())
+    features["zcr_mean"] = float(zcr.mean())
+
+    # SPECTRAL
+    centroid = lb.feature.spectral_centroid(S=S, sr=TARGET_SAMPLING_RATE)
+    bandwidth = lb.feature.spectral_bandwidth(S=S, sr=TARGET_SAMPLING_RATE)
+    rolloff = lb.feature.spectral_rolloff(S=S, sr=TARGET_SAMPLING_RATE)
+    flatness = lb.feature.spectral_flatness(S=S)
+
+    features["centroid_mean"] = float(centroid.mean())
+    features["centroid_std"] = float(centroid.std())
+
+    features["flatness_mean"] = float(flatness.mean())
+    features["flatness_std"] = float(flatness.std())
+
+    features["rolloff_mean"] = float(rolloff.mean())
+    features["bandwidth_mean"] = float(bandwidth.mean())
+
+    # Flux (onset strength)
+    flux = lb.onset.onset_strength(S=S, sr=TARGET_SAMPLING_RATE)
+    features["flux_mean"] = float(flux.mean())
+
+    # SHAPE
+    features["skewness_mean"] = float(skew(centroid, axis=1)[0])
+    features["kurtosis_mean"] = float(kurtosis(centroid, axis=1)[0])
+
+    # MFCC (reuses S implicitly)
+    mfccs = lb.feature.mfcc(S=lb.power_to_db(S**2), n_mfcc=16)
+
+    mfcc_mean = mfccs.mean(axis=1)
+    mfcc_std = mfccs.std(axis=1)
+    for i in range(1, 16):
+        features[f"mfcc_{i}_mean"] = float(mfcc_mean[i])
+        features[f"mfcc_{i}_std"] = float(mfcc_std[i])
+
+    return features
+
+
+def extract_mel_spec(
+    audio_segment: np.ndarray,
+    sample_rate: int = TARGET_SAMPLING_RATE,
+    n_mels: int = 128,
+) -> np.ndarray:
+    """
+    Convert one fixed-length audio segment into a mel spectrogram
+    for CNN input.
+
+    Parameters
+    ----------
+    audio_segment : np.ndarray
+        One fixed-length audio segment.
+    sample_rate : int, default=TARGET_SAMPLING_RATE
+        Sampling rate of the waveform.
+    n_mels : int, default=128
+        Number of mel frequency bins.
+
+    Returns
+    -------
+    np.ndarray
+        Mel spectrogram of shape (n_mels, time_steps, 1),
+        ready for CNN input.
+    """
+    mel_spec = lb.feature.melspectrogram(
+        y=audio_segment,
+        sr=sample_rate,
+        n_mels=n_mels,
+    )
+
+    mel_spec_db = lb.power_to_db(mel_spec, ref=np.max)
+
+    return mel_spec_db[..., np.newaxis].astype(np.float32)
+
+
+def audio_preprocessing(audio, sampling_rate, start, end):
+    if sampling_rate != TARGET_SAMPLING_RATE:
+        audio = lb.resample(
+            y=audio, orig_sr=sampling_rate, target_sr=TARGET_SAMPLING_RATE
         )
-        X = pd.concat([X, encoded_df], axis=1)
-        X = X.drop(columns=['chest_location'])
-        return X
+    audio_segments = extract_audio_segments(audio, start, end, diagnosis="Unknown")
 
+    if len(audio_segments) == 0:
+        return pd.DataFrame(), np.empty((0,), dtype=np.float32)
 
-class FeatureConstructor(BaseEstimator, TransformerMixin):
-    """
-    Constructs derived features. Run on full data before train/test split.
+    n = len(audio_segments)
+    features_list = [None] * n
+    mel_spec_list = [None] * n
 
-    - cycle_length: duration of each breath cycle in seconds (end - start)
-    - bmi: normalised BMI from adult or child measurements
+    for i, segment in enumerate(audio_segments):
+        segment_compressed = compress_audio(segment)
+        features, mel_spec = extract_audio_features(segment_compressed)
 
-    Drops: adult_bmi, child_weight, child_height, start, end.
-    Must run after ColumnEncoder (sex must already be integer encoded).
-    No leakage risk — all arithmetic, no population statistics.
-    """
+        features_list[i] = features
+        mel_spec_list[i] = mel_spec
 
-    def fit(self, X, y=None):
-        return self
+    features_df = pd.DataFrame(features_list)
+    mel_spec = np.stack(mel_spec_list).astype(np.float32)
 
-    def transform(self, X, y=None):
-        X = X.copy()
-        X['cycle_length'] = X['end'] - X['start']
-        X['bmi'] = X.apply(calculate_bmi, axis=1)
-        X = X.drop(columns=['adult_bmi', 'child_weight', 'child_height', 'start', 'end'])
-        return X
-
-
-class Imputer(BaseEstimator, TransformerMixin):
-    """
-    Imputes missing values. Run post-split, fit on train only.
-
-    - age: mean imputation
-    - bmi: mean imputation
-    - sex: mode imputation
-    """
-
-    def __init__(self):
-        self.mean_imputer = SimpleImputer(strategy='mean')
-        self.mode_imputer = SimpleImputer(strategy='most_frequent')
-
-    def fit(self, X, y=None):
-        self.mean_imputer.fit(X[['age', 'bmi']])
-        self.mode_imputer.fit(X[['sex']])
-        return self
-
-    def transform(self, X, y=None):
-        X = X.copy()
-        X[['age', 'bmi']] = self.mean_imputer.transform(X[['age', 'bmi']])
-        X[['sex']] = self.mode_imputer.transform(X[['sex']])
-        return X
-
-
-class Scaler(BaseEstimator, TransformerMixin):
-    """
-    Standard scales continuous features. Run post-split, fit on train only.
-
-    Scales age, bmi, cycle_length to zero mean and unit variance.
-    """
-
-    def __init__(self):
-        self.scaler = StandardScaler()
-
-    def fit(self, X, y=None):
-        self.scaler.fit(X[['age', 'bmi', 'cycle_length']])
-        return self
-
-    def transform(self, X, y=None):
-        X = X.copy()
-        X[['age', 'bmi', 'cycle_length']] = self.scaler.transform(X[['age', 'bmi', 'cycle_length']])
-        return X
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-def calculate_bmi(row):
-    """
-    Calculate a normalised BMI percentage for a patient row.
-
-    For adults (age >= 19), returns adult BMI normalised against a reference
-    value of 25 (WHO healthy BMI upper threshold).
-
-    For children, calculates raw BMI from weight and height, then normalises
-    against age- and sex-specific median BMI reference values. Reference values
-    are approximated from CDC growth chart data.
-
-    Parameters
-    ----------
-    row : pd.Series
-        A single row from a DataFrame containing:
-        - age (float): patient age in years
-        - sex (int or str): 0/'M' = Male, 1/'F' = Female
-        - adult_bmi (float): BMI for adults, NaN for children
-        - child_weight (float): weight in kg for children, NaN for adults
-        - child_height (float): height in cm for children, NaN for adults
-
-    Returns
-    -------
-    float
-        Normalised BMI percentage, or NaN if required fields are missing.
-
-    Notes
-    -----
-    Age thresholds are coarse approximations. Finer age resolution would
-    improve accuracy for children, particularly around puberty.
-    """
-    if row['age'] >= 19:
-        return row['adult_bmi'] / 25 if pd.notna(row['adult_bmi']) else np.nan
-
-    if pd.isna(row['child_weight']) or pd.isna(row['child_height']):
-        return np.nan
-
-    raw_bmi = row['child_weight'] / (row['child_height'] / 100) ** 2
-    age = row['age']
-    sex = row['sex']
-
-    is_male = sex in (0, 'M')
-    is_female = sex in (1, 'F')
-
-    if age < 2:
-        return raw_bmi / 16.5
-    elif is_male:
-        thresholds = [(9, 16), (11, 17), (12, 18), (13, 18.6), (14, 19.3),
-                      (15, 20), (16, 20.6), (17, 21.3), (18, 22), (19, 22.6), (20, 23)]
-        for max_age, divisor in thresholds:
-            if age <= max_age:
-                return raw_bmi / divisor
-    elif is_female:
-        thresholds = [(9, 16), (11, 17.5), (12, 18), (13, 18.6), (14, 19.3),
-                      (15, 20), (16, 20.5), (17, 20.8), (18, 21.2), (19, 21.5), (20, 21.8)]
-        for max_age, divisor in thresholds:
-            if age <= max_age:
-                return raw_bmi / divisor
-
-    return np.nan
-
-
-def stratified_group_split(data, test_size=0.2, val_size=0.1875, random_state=42):
-    """
-    Splits at patient level so no patient appears in more than one split,
-    while preserving disease class proportions across all three splits.
-
-    Extracts pid temporarily from cycle_filename for splitting purposes.
-
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Preprocessed dataframe containing 'cycle_filename' and 'disease' columns.
-    test_size : float
-        Proportion of patients to include in test set.
-    val_size : float
-        Proportion of remaining patients (after test removed) to include in val set.
-        Default 0.1875 yields ~15% of total patients.
-    random_state : int
-
-    Returns
-    -------
-    train_data, val_data, test_data : pd.DataFrame
-    train_cycle_filenames, val_cycle_filenames, test_cycle_filenames : np.ndarray
-    """
-    data = data.copy()
-    data['pid'] = data['cycle_filename'].str.split('_').str[0].astype(int)
-
-    patient_diseases = data.groupby('pid')['disease'].first().reset_index()
-
-    # First pass: carve out test
-    sss_test = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    train_val_idx, test_idx = next(sss_test.split(patient_diseases['pid'], patient_diseases['disease']))
-
-    train_val_patients = patient_diseases.iloc[train_val_idx]
-    test_pids = patient_diseases.iloc[test_idx]['pid'].values
-
-    # Second pass: split remaining into train and val
-    sss_val = StratifiedShuffleSplit(n_splits=1, test_size=val_size, random_state=random_state)
-    train_idx, val_idx = next(sss_val.split(train_val_patients['pid'], train_val_patients['disease']))
-
-    train_pids = train_val_patients.iloc[train_idx]['pid'].values
-    val_pids = train_val_patients.iloc[val_idx]['pid'].values
-
-    train_data = data[data['pid'].isin(train_pids)].drop(columns=['pid']).reset_index(drop=True)
-    val_data   = data[data['pid'].isin(val_pids)].drop(columns=['pid']).reset_index(drop=True)
-    test_data  = data[data['pid'].isin(test_pids)].drop(columns=['pid']).reset_index(drop=True)
-
-    train_cycle_filenames = train_data['cycle_filename'].values
-    val_cycle_filenames   = val_data['cycle_filename'].values
-    test_cycle_filenames  = test_data['cycle_filename'].values
-
-    return train_data, val_data, test_data, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames
-# ─── Main entry point ─────────────────────────────────────────────────────────
-
-def preprocess_tabular_data(data, pipeline_save_path=None):
-    """
-    Full preprocessing flow for tabular data.
-
-    Pipelines are instantiated fresh each call to avoid state leakage.
-
-    1. Pre-split: encode columns, construct features (no leakage risk)
-    2. Stratified group split at patient level
-    3. Separate X and y
-    4. Post-split: impute and scale (fit on train only)
-    5. Optionally save the fitted post-split pipeline
-
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Raw merged dataframe from load_data()
-    pipeline_save_path : Path or str, optional
-        If provided, saves the fitted post-split pipeline to this path.
-        Parent directory will be created if it does not exist.
-
-    Returns
-    -------
-    X_train, X_val, X_test : pd.DataFrame
-    y_train, y_val, y_test : pd.Series
-    train_cycle_filenames, test_cycle_filenames : np.ndarray
-    """
-    pre_split_pipeline = Pipeline([
-        ('encode', ColumnEncoder()),
-        ('construct', FeatureConstructor()),
-    ])
-
-    post_split_pipeline = Pipeline([
-        ('impute', Imputer()),
-        ('scale', Scaler()),
-    ])
-
-    # 1. Pre-split transformations
-    data = pre_split_pipeline.fit_transform(data)
-
-   # 2. Train/val/test split at patient level
-    train_data, val_data, test_data, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames = stratified_group_split(data)
-
-    # 3. Separate features and target
-    X_train = train_data.drop(columns=['disease', 'cycle_filename'])
-    y_train = train_data['disease']
-    X_val   = val_data.drop(columns=['disease', 'cycle_filename'])
-    y_val   = val_data['disease']
-    X_test  = test_data.drop(columns=['disease', 'cycle_filename'])
-    y_test  = test_data['disease']
-
-    # 4. Post-split: fit on train only, transform all three
-    X_train = post_split_pipeline.fit_transform(X_train)
-    X_val   = post_split_pipeline.transform(X_val)
-    X_test  = post_split_pipeline.transform(X_test)
-    # 5. Optionally save fitted pipeline
-    if pipeline_save_path is not None:
-        Path(pipeline_save_path).parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(post_split_pipeline, pipeline_save_path)
-
-    return X_train, X_val, X_test, y_train, y_val, y_test, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames
+    return features_df, mel_spec

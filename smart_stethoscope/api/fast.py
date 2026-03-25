@@ -5,7 +5,7 @@ import pandas as pd
 import librosa
 from fastapi import FastAPI, UploadFile, File
 from tensorflow import keras
-from smart_stethoscope.ml_logic.preprocessing import (
+from smart_stethoscope.ml_logic.audio_preprocessing import (
     preprocess_audio,
     build_mel_spectrogram_dataset
 )
