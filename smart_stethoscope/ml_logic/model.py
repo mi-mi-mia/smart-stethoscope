@@ -11,21 +11,232 @@ from tensorflow.keras.utils import to_categorical
 
 
 CLASS_NAMES = ["Bronchiectasis", "COPD", "Healthy", "Pneumonia", "URTI"]
-DEFAULT_XGB_WEIGHT = 0.6
+DEFAULT_XGB_WEIGHT = 0.8
+
+
+
+# ================================
+# GROUP SPLITS
+# ================================
+pass
+
 
 
 # ================================
 # Training models
 # ================================
+def build_xgb_model(num_classes: int) -> xgb.XGBClassifier:
+    """
+    Build XGBoost model.
+
+    Parameters
+    ----------
+    num_classes : int
+        Number of target classes
+
+    Returns
+    -------
+    xgb.XGBClassifier
+        Untrained XGBoost classifier
+    """
+    model = xgb.XGBClassifier(
+        n_estimators=600,
+        max_depth=3,
+        subsample=0.8,
+        colsample_bytree=0.7,
+        reg_lambda=1.5,
+        objective="multi:softprob",
+        num_class=num_classes,
+        random_state=42,
+        eval_metric="mlogloss",
+        early_stopping_rounds=15
+    )
+    return model
+
+
+def train_xgb_model(X_train, y_train, X_val=None, y_val=None):
+    """
+    Train XGBoost model.
+
+    Parameters
+    ----------
+    X_train : pd.DataFrame or np.ndarray
+        Training features
+    y_train : pd.Series or np.ndarray
+        Training labels
+    X_val : pd.DataFrame or np.ndarray, optional
+        Validation features for early stopping
+    y_val : pd.Series or np.ndarray, optional
+        Validation labels for early stopping
+
+    Returns
+    -------
+    xgb.XGBClassifier
+        Trained XGBoost model
+    """
+    num_classes = len(np.unique(y_train))
+    xgb_model = build_xgb_model(num_classes=num_classes)
+
+    # Balance classes on training set only
+    w_train = compute_sample_weight(class_weight="balanced", y=y_train)
+
+    # Use validation set if provided
+    if X_val is not None and y_val is not None:
+        xgb_model.fit(
+            X_train,
+            y_train,
+            sample_weight=w_train,
+            eval_set=[(X_val, y_val)],
+            verbose=False
+        )
+    else:
+        # Full-data training path (e.g. final cloud training)
+        # No eval_set -> no early stopping behaviour used in practice
+        xgb_model.fit(
+            X_train,
+            y_train,
+            sample_weight=w_train,
+            verbose=False
+        )
+
+    return xgb_model
+
+
 def build_cnn_model(input_shape, num_classes):
-    """Build and compile a CNN for mel spectrogram classification."""
-    pass
+    """
+    Build and compile CNN using the final architecture
+    from the hybrid notebook.
 
-    # return cnn_model
+    Parameters
+    ----------
+    input_shape : tuple
+        Shape of one mel spectrogram sample, e.g. (128, 141, 1)
+    num_classes : int
+        Number of target classes
+
+    Returns
+    -------
+    keras.Model
+        Compiled CNN model
+    """
+    cnn_model = models.Sequential()
+
+    # Input
+    cnn_model.add(layers.Input(shape=input_shape))
+
+    # Conv2D Block 1
+    cnn_model.add(layers.Conv2D(32, (3, 3), padding="same"))
+    cnn_model.add(layers.BatchNormalization())
+    cnn_model.add(layers.Activation("relu"))
+    cnn_model.add(layers.MaxPooling2D((2, 2)))
+
+    # Conv2D Block 2
+    cnn_model.add(layers.Conv2D(64, (3, 3), padding="same"))
+    cnn_model.add(layers.BatchNormalization())
+    cnn_model.add(layers.Activation("relu"))
+    cnn_model.add(layers.MaxPooling2D((2, 2)))
+
+    # Conv2D Block 3
+    cnn_model.add(layers.Conv2D(128, (3, 3), padding="same"))
+    cnn_model.add(layers.BatchNormalization())
+    cnn_model.add(layers.Activation("relu"))
+    cnn_model.add(layers.MaxPooling2D((2, 2)))
+
+    # Conv2D Block 4
+    cnn_model.add(layers.Conv2D(256, (3, 3), padding="same"))
+    cnn_model.add(layers.BatchNormalization())
+    cnn_model.add(layers.Activation("relu"))
+    cnn_model.add(layers.MaxPooling2D((2, 2)))
+
+    # Turn feature maps into one vector
+    cnn_model.add(layers.GlobalMaxPooling2D())
+
+    # Dense layer before classification
+    cnn_model.add(layers.Dense(32, activation="relu"))
+    cnn_model.add(layers.Dropout(0.3))
+
+    # Final prediction layer
+    cnn_model.add(layers.Dense(num_classes, activation="softmax"))
+
+    cnn_model.compile(
+        optimizer="adam",
+        loss="categorical_crossentropy",
+        metrics=["accuracy"]
+    )
+
+    return cnn_model
 
 
-def train_cnn_model():
-    pass
+def train_cnn_model(
+    X_train_img,
+    y_train,
+    X_val_img=None,
+    y_val=None,
+    epochs=30,
+    batch_size=32,
+    patience=5
+):
+    """
+    Train CNN model.
+
+    Parameters
+    ----------
+    X_train_img : np.ndarray
+        Training mel spectrogram array
+    y_train : np.ndarray or pd.Series
+        Integer labels for training
+    X_val_img : np.ndarray, optional
+        Validation mel spectrogram array
+    y_val : np.ndarray or pd.Series, optional
+        Integer labels for validation
+    epochs : int
+        Number of training epochs
+    batch_size : int
+        Batch size
+    patience : int
+        Early stopping patience
+
+    Returns
+    -------
+    keras.Model
+        Trained CNN model
+    """
+    num_classes = len(np.unique(y_train))
+
+    # One-hot encode
+    y_train_cat = to_categorical(y_train, num_classes)
+    input_shape = X_train_img.shape[1:]
+
+    cnn_model = build_cnn_model(input_shape=input_shape, num_classes=num_classes)
+
+    callbacks = [EarlyStopping(patience=patience, restore_best_weights=True)]
+
+    # Validation-data training path
+    if X_val_img is not None and y_val is not None:
+        y_val_cat = to_categorical(y_val, num_classes)
+
+        cnn_model.fit(
+            X_train_img,
+            y_train_cat,
+            validation_data=(X_val_img, y_val_cat),
+            epochs=epochs,
+            batch_size=batch_size,
+            callbacks=callbacks,
+            verbose=0
+        )
+    else:
+        # Full-data training path (e.g. final cloud training)
+        # No validation_data -> early stopping will effectively do nothing useful,
+        # but keeping callbacks list is harmless if later changed.
+        cnn_model.fit(
+            X_train_img,
+            y_train_cat,
+            epochs=epochs,
+            batch_size=batch_size,
+            verbose=0
+        )
+
+    return cnn_model
 
 
 
@@ -208,58 +419,3 @@ def predict_hybrid(xgb_model, cnn_model, xgb_df, cnn_array, w=0.6, class_names=N
         "final_proba": final_proba,
         "final_prediction": final_prediction
     }
-
-
-
-# ================================
-# Baseline training function
-# ================================
-def run_logistic_baseline(X_train, X_test, y_train, y_test):
-    """
-    Train and evaluate a multiclass logistic regression model
-    using already-preprocessed train and test data.
-
-    Parameters
-    ----------
-    X_train : pd.DataFrame
-        Preprocessed training features
-    X_test : pd.DataFrame
-        Preprocessed test features
-    y_train : pd.Series
-        Training target
-    y_test : pd.Series
-        Test target
-
-    Returns
-    -------
-    model : trained LogisticRegression model
-    y_pred : np.ndarray
-        Predicted labels for X_test
-    """
-
-    # -----------------------------
-    # Train model
-    # -----------------------------
-    model = LogisticRegression(
-        max_iter=2000,
-        class_weight="balanced",
-        random_state=42
-    )
-
-    model.fit(X_train, y_train)
-
-    # -----------------------------
-    # Predict
-    # -----------------------------
-    y_pred = model.predict(X_test)
-
-    # -----------------------------
-    # Evaluate
-    # -----------------------------
-    print("Accuracy:", accuracy_score(y_test, y_pred))
-    print(classification_report(y_test, y_pred, zero_division=0))
-
-    # -----------------------------
-    # Return useful objects
-    # -----------------------------
-    return model, y_pred
