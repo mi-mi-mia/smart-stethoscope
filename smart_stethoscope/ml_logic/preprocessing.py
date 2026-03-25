@@ -68,7 +68,7 @@ def compress_audio(audio):
 def extract_audio_features(audio):
     return (
         extract_numerical_audio_features(audio),
-        extract_mel_spectrogram(audio),
+        extract_mel_spec(audio),
     )
 
 
@@ -121,7 +121,7 @@ def extract_numerical_audio_features(audio):
     return features
 
 
-def extract_mel_spectrogram(
+def extract_mel_spec(
     audio_segment: np.ndarray,
     sample_rate: int = TARGET_SAMPLING_RATE,
     n_mels: int = 128,
@@ -168,16 +168,16 @@ def audio_preprocessing(audio, sampling_rate, start, end):
 
     n = len(audio_segments)
     features_list = [None] * n
-    mel_list = [None] * n
+    mel_spec_list = [None] * n
 
     for i, segment in enumerate(audio_segments):
         segment_compressed = compress_audio(segment)
-        features, mel = extract_audio_features(segment_compressed)
+        features, mel_spec = extract_audio_features(segment_compressed)
 
         features_list[i] = features
-        mel_list[i] = mel
+        mel_spec_list[i] = mel_spec
 
     features_df = pd.DataFrame(features_list)
-    mel_spectrograms = np.stack(mel_list).astype(np.float32)
+    mel_spec = np.stack(mel_spec_list).astype(np.float32)
 
-    return features_df, mel_spectrograms
+    return features_df, mel_spec
