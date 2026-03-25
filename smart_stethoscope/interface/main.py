@@ -1,4 +1,5 @@
 from smart_stethoscope.ml_logic.data_loading import load_audio_data
+from smart_stethoscope.ml_logic.audio_preprocessing import audio_preprocessing
 from smart_stethoscope.params import CLASSES_TO_KEEP
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
@@ -22,15 +23,11 @@ def train():
 
 
 def preprocess_for_prediction(audio, sampling_rate, start, end):
-    return features_df, mel_spectograms
+    return audio_preprocessing(audio, sampling_rate, start, end)
 
 
 ### This is for a CNN model (no tabular data yet)
 def predict(audio: np.ndarray, original_sampling_rate: int, annotations: pd.DataFrame):
-    padded_audio = preprocess_audio(audio, original_sampling_rate, annotations)
-    # audio feature extraction
-    # load model
-    # for each brething cycle in breathing_cycle_features predict the class
     pass
 
 
