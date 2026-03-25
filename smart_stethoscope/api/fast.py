@@ -5,14 +5,14 @@ import pandas as pd
 import librosa
 from fastapi import FastAPI, UploadFile, File
 from tensorflow import keras
-from smart_stethoscope.ml_logic.audio_preprocessing import (
+from smart_stethoscope.ml_logic.preprocessing import (
     preprocess_audio,
     build_mel_spectrogram_dataset
 )
-from smart_stethoscope.params import TARGET_SAMPLING_RATE
-from google.cloud import storage
 
-# Load once at startup
+# ================================
+# Model loading
+# ================================
 MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope-models/best_cnn_model.keras")
 model = keras.models.load_model(MODEL_PATH)
 
@@ -21,11 +21,21 @@ DISEASE_MAPPING_INV = {
     3: 'Bronchiectasis', 4: 'Pneumonia', 5: 'Bronchiolitis'
 }
 
+# ================================
+# App
+# ================================
 app = FastAPI()
 
 @app.get("/")
 def index():
     return {"status": "API is online"}
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model_loaded": model is not None
+    }
 
 @app.post("/predict")
 async def predict_audio(
@@ -53,8 +63,8 @@ async def predict_audio(
     features = build_mel_spectrogram_dataset(padded_audios)
 
     # 6. Predict per cycle — CNN returns probabilities, argmax gives class
-    probabilities = model.predict(features)         # shape: (n_cycles, 6)
-    predicted_ints = np.argmax(probabilities, axis=1)  # one per cycle
+    probabilities = model.predict(features)
+    predicted_ints = np.argmax(probabilities, axis=1)
 
     # 7. Majority vote across cycles → single prediction per recording
     prediction_int = int(np.bincount(predicted_ints).argmax())
