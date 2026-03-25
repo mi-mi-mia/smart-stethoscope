@@ -1,11 +1,10 @@
-from pathlib import Path
 from colorama import Fore, Style
 import pandas as pd
 import numpy as np
 import librosa as lb
 from joblib import Parallel, delayed
 from smart_stethoscope.params import *
-from smart_stethoscope.ml_logic.audio_preprocessing import (
+from smart_stethoscope.ml_logic.preprocessing import (
     extract_audio_segments,
     compress_audio,
     extract_audio_features,
@@ -54,7 +53,7 @@ def process_file(file, diagnosis_map):
     return features_list, mel_list
 
 
-def load_audio_data():
+def load_and_preprocess_raw_audio_data():
     raw_audio_path = RAW_AUDIO_PATH
 
     patient_data = pd.read_csv(DIAGNOSIS_PATH, names=["patient_id", "diagnosis"])
