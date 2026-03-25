@@ -32,4 +32,4 @@ DIAGNOSIS_PATH = (
 
 CACHE_PATH = repo_root / "preprocessed_data/"
 
-CLASSES_TO_KEEP = ["COPD", "Pneumonia", "Healthy", "URTI", "Bronchiectasis"]
+CLASS_NAMES = ["COPD", "Pneumonia", "Healthy", "URTI", "Bronchiectasis"]
