@@ -3,6 +3,7 @@
 # ================================
 import numpy as np
 import xgboost as xgb
+from concurrent.futures import ThreadPoolExecutor
 
 from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.utils.class_weight import compute_sample_weight
@@ -10,18 +11,13 @@ from sklearn.utils.class_weight import compute_sample_weight
 from tensorflow.keras import models, layers
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
+from smart_stethoscope.params import CLASS_NAMES
 
 
 # ================================
 # GROUP SPLITS
 # ================================
-def make_group_train_val_split(
-    X,
-    y,
-    groups,
-    n_splits=3,
-    random_state=42
-):
+def make_group_train_val_split(X, y, groups, n_splits=3, random_state=42):
     """
     Create one stratified grouped train/validation split.
     - grouped by patient
@@ -50,17 +46,16 @@ def make_group_train_val_split(
         Validation indices
     """
     y_array = y.to_numpy() if hasattr(y, "to_numpy") else np.asarray(y)
-    groups_array = groups.to_numpy() if hasattr(groups, "to_numpy") else np.asarray(groups)
+    groups_array = (
+        groups.to_numpy() if hasattr(groups, "to_numpy") else np.asarray(groups)
+    )
 
     sgkf = StratifiedGroupKFold(
-        n_splits=n_splits,
-        shuffle=True,
-        random_state=random_state
+        n_splits=n_splits, shuffle=True, random_state=random_state
     )
 
     train_idx, val_idx = next(sgkf.split(X, y_array, groups_array))
     return train_idx, val_idx
-
 
 
 # ================================
@@ -90,7 +85,7 @@ def build_xgb_model(num_classes: int) -> xgb.XGBClassifier:
         num_class=num_classes,
         random_state=42,
         eval_metric="mlogloss",
-        early_stopping_rounds=15
+        early_stopping_rounds=15,
     )
     return model
 
@@ -128,17 +123,12 @@ def train_xgb_model(X_train, y_train, X_val=None, y_val=None):
             y_train,
             sample_weight=w_train,
             eval_set=[(X_val, y_val)],
-            verbose=False
+            verbose=False,
         )
     else:
         # Full-data training path (e.g. final cloud training)
         # Fallback path if no validation set is provided
-        xgb_model.fit(
-            X_train,
-            y_train,
-            sample_weight=w_train,
-            verbose=False
-        )
+        xgb_model.fit(X_train, y_train, sample_weight=w_train, verbose=False)
 
     return xgb_model
 
@@ -199,9 +189,7 @@ def build_cnn_model(input_shape, num_classes):
     cnn_model.add(layers.Dense(num_classes, activation="softmax"))
 
     cnn_model.compile(
-        optimizer="adam",
-        loss="categorical_crossentropy",
-        metrics=["accuracy"]
+        optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
     )
 
     return cnn_model
@@ -214,7 +202,7 @@ def train_cnn_model(
     y_val=None,
     epochs=30,
     batch_size=32,
-    patience=5
+    patience=5,
 ):
     """
     Train CNN model.
@@ -262,34 +250,22 @@ def train_cnn_model(
             epochs=epochs,
             batch_size=batch_size,
             callbacks=callbacks,
-            verbose=0
+            verbose=0,
         )
     else:
         # Full-data training path (e.g. final cloud training)
         # Fallback path if no validation set is provided
         cnn_model.fit(
-            X_train_img,
-            y_train_cat,
-            epochs=epochs,
-            batch_size=batch_size,
-            verbose=0
+            X_train_img, y_train_cat, epochs=epochs, batch_size=batch_size, verbose=0
         )
 
     return cnn_model
 
 
-
 # ================================
-# Train the hybrid model
+# Train the hybrid model
 # ================================
-def train_final_hybrid_models(
-    X,
-    y,
-    mel_spectrograms,
-    groups,
-    n_splits=3,
-    random_state=42
-):
+def train_final_hybrid_models(X, y, mel_specs, groups, n_splits=3, random_state=42):
     """
     Train final XGB and CNN models using one stratified grouped train/val split.
     No test split here - this is for FINAL MODEL training only.
@@ -299,11 +275,7 @@ def train_final_hybrid_models(
     # Shared grouped train/val split
     # -----------------------------
     train_idx, val_idx = make_group_train_val_split(
-        X=X,
-        y=y,
-        groups=groups,
-        n_splits=n_splits,
-        random_state=random_state
+        X=X, y=y, groups=groups, n_splits=n_splits, random_state=random_state
     )
 
     # -----------------------------
@@ -328,8 +300,8 @@ def train_final_hybrid_models(
     # -----------------------------
     # CNN inputs (same indices)
     # -----------------------------
-    X_train_img = mel_spectrograms[train_idx]
-    X_val_img = mel_spectrograms[val_idx]
+    X_train_img = mel_specs[train_idx]
+    X_val_img = mel_specs[val_idx]
 
     print("Train classes:", np.sort(np.unique(y_train)))
     print("Val classes:  ", np.sort(np.unique(y_val)))
@@ -342,27 +314,21 @@ def train_final_hybrid_models(
     # Train XGB
     # -----------------------------
     xgb_model = train_xgb_model(
-        X_train=X_train,
-        y_train=y_train,
-        X_val=X_val,
-        y_val=y_val
+        X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val
     )
 
     # -----------------------------
     # Train CNN
     # -----------------------------
     cnn_model = train_cnn_model(
-        X_train_img=X_train_img,
-        y_train=y_train,
-        X_val_img=X_val_img,
-        y_val=y_val
+        X_train_img=X_train_img, y_train=y_train, X_val_img=X_val_img, y_val=y_val
     )
 
     return {
         "xgb_model": xgb_model,
         "cnn_model": cnn_model,
         "train_idx": train_idx,
-        "val_idx": val_idx
+        "val_idx": val_idx,
     }
 
 
@@ -486,8 +452,7 @@ def predict_final_class(final_proba, class_names=CLASS_NAMES, threshold=None):
     if class_names is not None:
         predicted_label = class_names[predicted_index]
         class_probabilities = {
-            class_names[i]: float(final_proba[i])
-            for i in range(len(class_names))
+            class_names[i]: float(final_proba[i]) for i in range(len(class_names))
         }
     else:
         predicted_label = None
@@ -500,7 +465,7 @@ def predict_final_class(final_proba, class_names=CLASS_NAMES, threshold=None):
         "predicted_index": predicted_index,
         "predicted_label": predicted_label,
         "confidence": confidence,
-        "class_probabilities": class_probabilities
+        "class_probabilities": class_probabilities,
     }
 
 
@@ -510,7 +475,8 @@ def predict_hybrid(
     xgb_df,
     cnn_array,
     w=DEFAULT_XGB_WEIGHT,
-    class_names=CLASS_NAMES):
+    class_names=CLASS_NAMES,
+):
     """
     Full hybrid prediction pipeline:
     - XGB probabilities per chunk
@@ -537,8 +503,13 @@ def predict_hybrid(
     dict
         Includes intermediate and final outputs
     """
-    xgb_proba = predict_xgb_proba(xgb_model, xgb_df)
-    cnn_proba = predict_cnn_proba(cnn_model, cnn_array)
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(predict_xgb_proba, xgb_model, xgb_df),
+            executor.submit(predict_cnn_proba, cnn_model, cnn_array),
+        ]
+        results = [f.result() for f in futures]
+    xgb_proba, cnn_proba = results
 
     fused_chunk_proba = fuse_proba(xgb_proba, cnn_proba, w=w)
     final_proba = aggregate_chunk_proba(fused_chunk_proba)
@@ -549,5 +520,5 @@ def predict_hybrid(
         "cnn_chunk_proba": cnn_proba,
         "fused_chunk_proba": fused_chunk_proba,
         "final_proba": final_proba,
-        "final_prediction": final_prediction
+        "final_prediction": final_prediction,
     }
