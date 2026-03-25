@@ -13,6 +13,8 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 from smart_stethoscope.params import CLASS_NAMES
 
+from smart_stethoscope.params import DEFAULT_XGB_WEIGHT, CLASS_NAMES
+
 
 # ================================
 # GROUP SPLITS

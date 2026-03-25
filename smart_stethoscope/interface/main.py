@@ -68,4 +68,8 @@ def predict(xgb_model, cnn_model, xgb_features, cnn_features):
 
 
 if __name__ == "__main__":
-    preprocessing()  # safety recommendation
+    results = train()
+
+    print("Training complete")
+    print("Train size:", len(results["train_idx"]))
+    print("Val size:", len(results["val_idx"]))
