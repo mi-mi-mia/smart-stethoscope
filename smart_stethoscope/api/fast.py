@@ -10,6 +10,7 @@ from smart_stethoscope.ml_logic.audio_preprocessing import (
     preprocess_audio, # need to update function name
     build_mel_spectrogram_dataset
 )
+from smart_stethoscope.interface.main import preprocess_for_prediction
 from smart_stethoscope.params import TARGET_SAMPLING_RATE
 
 # Load once at startup.
@@ -71,8 +72,8 @@ async def predict_audio(
     #)
 
     # 4. Preprocess: resample, slice cycles, trim
-    xgb_df, cnn_df = preprocess_audio(audio, sr, start, end) #need to update function name
-
+    #preprocess_audio(audio, sr, start, end)
+    xgb_df, cnn_df = preprocess_for_prediction(audio, sr, start, end)
     # 5. Convert breathing cycles into mel spectrograms for CNN
     #features = build_mel_spectrogram_dataset(padded_audios)
 
