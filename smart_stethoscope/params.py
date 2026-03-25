@@ -31,4 +31,4 @@ DIAGNOSIS_PATH = (
     / "raw_data/Respiratory_Sound_Database/Respiratory_Sound_Database/patient_diagnosis.csv"
 )
 
-CLASS_NAMES = ["COPD", "Pneumonia", "Healthy", "URTI", "Bronchiectasis"]
+CLASS_NAMES = ["Bronchiectasis", "COPD", "Healthy", "Pneumonia", "URTI"]
