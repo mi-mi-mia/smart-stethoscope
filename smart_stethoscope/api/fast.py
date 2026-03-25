@@ -10,9 +10,10 @@ from smart_stethoscope.ml_logic.preprocessing import (
     build_mel_spectrogram_dataset,
 )
 from smart_stethoscope.params import TARGET_SAMPLING_RATE
+from google.cloud import storage
 
 # Load once at startup
-MODEL_PATH = os.getenv("MODEL_PATH", "models/best_cnn_model.keras")
+MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope-models/best_cnn_model.keras")
 model = keras.models.load_model(MODEL_PATH)
 
 DISEASE_MAPPING_INV = {
