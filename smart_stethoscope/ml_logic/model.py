@@ -11,6 +11,7 @@ from sklearn.utils.class_weight import compute_sample_weight
 from tensorflow.keras import models, layers
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
+from smart_stethoscope.params import CLASS_NAMES
 
 
 DEFAULT_XGB_WEIGHT = 0.8
