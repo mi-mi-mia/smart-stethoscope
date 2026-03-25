@@ -1,22 +1,28 @@
-from smart_stethoscope.ml_logic.data_loading import load_data
-from smart_stethoscope.ml_logic.preprocessing import preprocess_tabular_data
-from smart_stethoscope.ml_logic.audio_preprocessing import preprocess_audio
+from smart_stethoscope.ml_logic.data_loading import load_audio_data
+from smart_stethoscope.params import CLASSES_TO_KEEP
+from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import pandas as pd
 
 
 def preprocessing():
-    data = load_data()
-    X_train, X_val, X_test, y_train, y_val, y_test, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames = (
-        preprocess_tabular_data(
-            data, pipeline_save_path="models/post_split_pipeline.pkl"
-        )
-    )
-    return X_train, X_val, X_test, y_train, y_val, y_test, train_cycle_filenames, val_cycle_filenames, test_cycle_filenames
+    features_df, mel_spectograms = load_audio_data()
+
+    label_encoder = LabelEncoder()
+    y = label_encoder.fit_transform(features_df["diagnosis"])
+
+    groups = features_df["patient_id"]
+    X = features_df.drop(columns=["patient_id", "diagnosis"], errors="ignore")
+
+    return X, mel_spectograms, y, groups
 
 
 def train():
     pass
+
+
+def preprocess_for_prediction(audio, sampling_rate, start, end):
+    return features_df, mel_spectograms
 
 
 ### This is for a CNN model (no tabular data yet)
