@@ -26,8 +26,8 @@ def preprocess_for_prediction(audio, sampling_rate, start, end):
     return audio_preprocessing(audio, sampling_rate, start, end)
 
 
-def predict(xgb_model, cnn_model, xgb_df, cnn_array):
-    return predict_hybrid(xgb_model, cnn_model, xgb_df, cnn_array)
+def predict(xgb_model, cnn_model, xgb_features, cnn_features):
+    return predict_hybrid(xgb_model, cnn_model, xgb_features, cnn_features)
 
 
 if __name__ == "__main__":
