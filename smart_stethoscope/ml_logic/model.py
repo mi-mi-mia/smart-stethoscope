@@ -12,10 +12,6 @@ from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 
 
-DEFAULT_XGB_WEIGHT = 0.8
-
-
-
 # ================================
 # GROUP SPLITS
 # ================================
