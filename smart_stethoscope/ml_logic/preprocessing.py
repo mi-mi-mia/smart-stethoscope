@@ -178,6 +178,6 @@ def audio_preprocessing(audio, sampling_rate, start, end):
         mel_list[i] = mel
 
     features_df = pd.DataFrame(features_list)
-    mel_spectrograms = np.stack(mel_list).astype(np.float32)
+    mel_spec = np.stack(mel_list).astype(np.float32)
 
-    return features_df, mel_spectrograms
+    return features_df, mel_spec

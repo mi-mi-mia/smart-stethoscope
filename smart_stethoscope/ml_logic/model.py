@@ -11,6 +11,8 @@ from tensorflow.keras import models, layers
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
 
+from smart_stethoscope.params import DEFAULT_XGB_WEIGHT, CLASS_NAMES
+
 
 # ================================
 # GROUP SPLITS
@@ -285,7 +287,7 @@ def train_cnn_model(
 def train_final_hybrid_models(
     X,
     y,
-    mel_spectrograms,
+    mel_spec,
     groups,
     n_splits=3,
     random_state=42
@@ -328,8 +330,8 @@ def train_final_hybrid_models(
     # -----------------------------
     # CNN inputs (same indices)
     # -----------------------------
-    X_train_img = mel_spectrograms[train_idx]
-    X_val_img = mel_spectrograms[val_idx]
+    X_train_img = mel_spec[train_idx]
+    X_val_img = mel_spec[val_idx]
 
     print("Train classes:", np.sort(np.unique(y_train)))
     print("Val classes:  ", np.sort(np.unique(y_val)))

@@ -18,7 +18,7 @@ def preprocessing():
     groups = features_df["patient_id"]
     X = features_df.drop(columns=["patient_id", "diagnosis"], errors="ignore")
 
-    return X, mel_spec, y, groups, label_encoder
+    return X, mel_spec, y, groups
 
 
 def train(n_splits=3, random_state=42):
@@ -72,4 +72,8 @@ def predict(audio: np.ndarray, original_sampling_rate: int, annotations: pd.Data
 
 
 if __name__ == "__main__":
-    preprocessing()  # safety recommendation
+    results = train()
+
+    print("Training complete")
+    print("Train size:", len(results["train_idx"]))
+    print("Val size:", len(results["val_idx"]))
