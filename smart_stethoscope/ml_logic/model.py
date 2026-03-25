@@ -3,6 +3,7 @@
 # ================================
 import numpy as np
 import xgboost as xgb
+import json
 from concurrent.futures import ThreadPoolExecutor
 
 from sklearn.model_selection import StratifiedGroupKFold
@@ -425,7 +426,7 @@ def aggregate_chunk_proba(chunk_proba):
     return chunk_proba.mean(axis=0)
 
 
-def predict_final_class(final_proba, class_names=CLASS_NAMES, threshold=None):
+def predict_final_class(final_proba, class_names=None, threshold=None):
     """
     Convert final probability vector into final class prediction.
 
@@ -477,7 +478,7 @@ def predict_hybrid(
     xgb_df,
     cnn_array,
     w=DEFAULT_XGB_WEIGHT,
-    class_names=CLASS_NAMES,
+    class_names=None,
 ):
     """
     Full hybrid prediction pipeline:
@@ -505,6 +506,10 @@ def predict_hybrid(
     dict
         Includes intermediate and final outputs
     """
+    if class_names is None:
+        with open("models/class_names.json") as f:
+            class_names = json.load(f)
+
     with ThreadPoolExecutor() as executor:
         futures = [
             executor.submit(predict_xgb_proba, xgb_model, xgb_df),
