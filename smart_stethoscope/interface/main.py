@@ -8,15 +8,12 @@ import pandas as pd
 def preprocessing():
     features_df, mel_spectograms = load_audio_data()
 
-    # encode - sequentially (0, 1, 2...)
     label_encoder = LabelEncoder()
-    features_df["target"] = label_encoder.fit_transform(features_df["diagnosis"])
+    y = label_encoder.fit_transform(features_df["diagnosis"])
 
-    # define X (features), y (target) and groups
-    cols_to_drop = ["patient_id", "diagnosis", "target"]
-    X = features_df.drop(columns=[c for c in cols_to_drop if c in features_df.columns])
-    y = features_df["target"]
     groups = features_df["patient_id"]
+    X = features_df.drop(columns=["patient_id", "diagnosis"], errors="ignore")
+
     return X, mel_spectograms, y, groups
 
 
