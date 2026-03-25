@@ -2,10 +2,15 @@
 # Imports
 # ================================
 import numpy as np
+import xgboost as xgb
+
 from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.utils.class_weight import compute_sample_weight
+
 from tensorflow.keras import models, layers
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.utils import to_categorical
+
 
 DEFAULT_XGB_WEIGHT = 0.8
 
@@ -14,7 +19,51 @@ DEFAULT_XGB_WEIGHT = 0.8
 # ================================
 # GROUP SPLITS
 # ================================
-pass
+def make_group_train_val_split(
+    X,
+    y,
+    groups,
+    n_splits=3,
+    random_state=42
+):
+    """
+    Create one stratified grouped train/validation split.
+    - grouped by patient
+    - stratified by class
+    - one train/val split only
+    - no test split here
+
+    Parameters
+    ----------
+    X : pd.DataFrame or np.ndarray
+        Feature matrix
+    y : pd.Series or np.ndarray
+        Integer labels
+    groups : pd.Series or np.ndarray
+        Group labels (e.g. patient IDs)
+    n_splits : int
+        Number of SGKF splits
+    random_state : int
+        Random seed
+
+    Returns
+    -------
+    train_idx : np.ndarray
+        Training indices
+    val_idx : np.ndarray
+        Validation indices
+    """
+    y_array = y.to_numpy() if hasattr(y, "to_numpy") else np.asarray(y)
+    groups_array = groups.to_numpy() if hasattr(groups, "to_numpy") else np.asarray(groups)
+
+    sgkf = StratifiedGroupKFold(
+        n_splits=n_splits,
+        shuffle=True,
+        random_state=random_state
+    )
+
+    train_idx, val_idx = next(sgkf.split(X, y_array, groups_array))
+    return train_idx, val_idx
 
 
 
@@ -87,7 +136,7 @@ def train_xgb_model(X_train, y_train, X_val=None, y_val=None):
         )
     else:
         # Full-data training path (e.g. final cloud training)
-        # No eval_set -> no early stopping behaviour used in practice
+        # Fallback path if no validation set is provided
         xgb_model.fit(
             X_train,
             y_train,
@@ -100,8 +149,7 @@ def train_xgb_model(X_train, y_train, X_val=None, y_val=None):
 
 def build_cnn_model(input_shape, num_classes):
     """
-    Build and compile CNN using the final architecture
-    from the hybrid notebook.
+    Build and compile CNN.
 
     Parameters
     ----------
@@ -222,8 +270,7 @@ def train_cnn_model(
         )
     else:
         # Full-data training path (e.g. final cloud training)
-        # No validation_data -> early stopping will effectively do nothing useful,
-        # but keeping callbacks list is harmless if later changed.
+        # Fallback path if no validation set is provided
         cnn_model.fit(
             X_train_img,
             y_train_cat,
@@ -252,13 +299,16 @@ def train_final_hybrid_models(
     No test split here - this is for FINAL MODEL training only.
     """
 
-    # Safe arrays for splitter
-    y_array = y.to_numpy() if hasattr(y, "to_numpy") else np.asarray(y)
-    groups_array = groups.to_numpy() if hasattr(groups, "to_numpy") else np.asarray(groups)
-
-    # One grouped + stratified split
-    sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    train_idx, val_idx = next(sgkf.split(X, y_array, groups_array))
+    # -----------------------------
+    # Shared grouped train/val split
+    # -----------------------------
+    train_idx, val_idx = make_group_train_val_split(
+        X=X,
+        y=y,
+        groups=groups,
+        n_splits=n_splits,
+        random_state=random_state
+    )
 
     # -----------------------------
     # XGB inputs
@@ -269,6 +319,8 @@ def train_final_hybrid_models(
     else:
         X_train = X[train_idx]
         X_val = X[val_idx]
+
+    y_array = y.to_numpy() if hasattr(y, "to_numpy") else np.asarray(y)
 
     if hasattr(y, "iloc"):
         y_train = y.iloc[train_idx]
@@ -456,7 +508,13 @@ def predict_final_class(final_proba, class_names=CLASS_NAMES, threshold=None):
     }
 
 
-def predict_hybrid(xgb_model, cnn_model, xgb_df, cnn_array, w=0.6, class_names=None):
+def predict_hybrid(
+    xgb_model,
+    cnn_model,
+    xgb_df,
+    cnn_array,
+    w=DEFAULT_XGB_WEIGHT,
+    class_names=CLASS_NAMES):
     """
     Full hybrid prediction pipeline:
     - XGB probabilities per chunk
