@@ -1,13 +1,12 @@
-from smart_stethoscope.ml_logic.data_loading import load_audio_data
-from smart_stethoscope.ml_logic.audio_preprocessing import audio_preprocessing
-from smart_stethoscope.params import CLASSES_TO_KEEP
+from smart_stethoscope.ml_logic.data_loading import load_and_preprocess_raw_audio_data
+from smart_stethoscope.ml_logic.preprocessing import audio_preprocessing
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import pandas as pd
 
 
 def preprocessing():
-    features_df, mel_spectograms = load_audio_data()
+    features_df, mel_spectograms = load_and_preprocess_raw_audio_data()
 
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(features_df["diagnosis"])
