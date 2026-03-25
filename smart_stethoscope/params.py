@@ -32,4 +32,4 @@ DIAGNOSIS_PATH = (
 
 CACHE_PATH = repo_root / "preprocessed_data/"
 
-N_MFCC = 13  # or whatever you trained with
+CLASSES_TO_KEEP = ["COPD", "Pneumonia", "Healthy", "URTI", "Bronchiectasis"]
