@@ -78,7 +78,7 @@ def load_audio_data():
     features_df = pd.DataFrame(all_features)
     mel_spectograms = np.stack(all_mel_spectograms).astype(np.float32)
 
-    mask = features_df["diagnosis"].isin(CLASSES_TO_KEEP).values
+    mask = features_df["diagnosis"].isin(CLASS_NAMES).values
     features_filtered = features_df[mask].reset_index(drop=True)
     mel_spectogram_filtered = mel_spectograms[mask]
 
