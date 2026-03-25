@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def preprocessing():
-    features_df, mel_spectograms = load_and_preprocess_raw_audio_data()
+    features_df, mel_spec = load_and_preprocess_raw_audio_data()
 
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(features_df["diagnosis"])
@@ -15,7 +15,7 @@ def preprocessing():
     groups = features_df["patient_id"]
     X = features_df.drop(columns=["patient_id", "diagnosis"], errors="ignore")
 
-    return X, mel_spectograms, y, groups
+    return X, mel_spec, y, groups
 
 
 def train():
