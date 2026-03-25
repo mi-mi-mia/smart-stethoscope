@@ -28,7 +28,11 @@ preprocessed_data/
 data/
 
 # Saved models
-models/
+models/*
+!models/cnn_model.keras
+!models/xgb_model.pkl
+!models/feature_columns.pkl
+!models/class_names.json
 *.joblib
 *.h5
 
