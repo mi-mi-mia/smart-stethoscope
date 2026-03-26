@@ -1,15 +1,17 @@
 import os
 import io
 import librosa
+import pickle
+import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File, Form
-from tensorflow import keras
-
 from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 
 # Load once at startup
-MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/best_cnn_model.keras")
-model = keras.models.load_model(MODEL_PATH)
-
+CNN_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
+XGB_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
+cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
+with open(XGB_MODEL_PATH, "rb") as f:
+    xgb_model = pickle.load(f)
 
 app = FastAPI()
 
@@ -36,7 +38,10 @@ async def predict_audio(
     # {"xgb_chunk_proba", "cnn_chunk_proba",
     # "fused_chunk_proba", "final_proba", "final_prediction"}
     predictions = predict(
-        xgb_model=xgb_model, cnn_model=cnn_model, xgb_df=xgb_df, cnn_array=cnn_df
+        xgb_model=xgb_model,
+        cnn_model=cnn_model,
+        xgb_features=xgb_df,
+        cnn_features=cnn_df,
     )
 
     # 5. Output
