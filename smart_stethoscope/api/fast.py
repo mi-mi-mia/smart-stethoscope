@@ -1,11 +1,29 @@
 import os
 import io
+import json
 import librosa
-import pickle
+import joblib
 import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File, Form
+from google.cloud import storage
 from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 
+# ================================
+# GCS loading helper
+# ================================
+def load_pickle_from_gcs(gcs_path: str):
+    client = storage.Client()
+    bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    buffer = io.BytesIO()
+    blob.download_to_file(buffer)
+    buffer.seek(0)
+    return joblib.load(buffer)
+
+# ================================
+# Model loading
+# ================================
 CNN_MODEL_PATH = os.getenv("CNN_MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
 XGB_MODEL_PATH = os.getenv("XGB_MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
 cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
@@ -42,7 +60,7 @@ async def predict_audio(
     # 3. Preprocess: resample, slice cycles, trim for both xbg and cnn
     xgb_df, cnn_df = preprocess_for_prediction(audio, sr, start, end)
 
-    # 4. Predict with hybrid model, output is a dictionary:
+    # 4. Predict with hybrid model, output is dictionary:
     # {"xgb_chunk_proba", "cnn_chunk_proba",
     # "fused_chunk_proba", "final_proba", "final_prediction"}
     predictions = predict(
