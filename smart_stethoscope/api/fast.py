@@ -1,40 +1,16 @@
 import os
 import io
 import librosa
-import joblib
-from fastapi import FastAPI, UploadFile, File
-from tensorflow import keras
-from google.cloud import storage
-from smart_stethoscope.ml_logic.preprocessing import audio_preprocessing
-from smart_stethoscope.ml_logic.model import predict_hybrid
+import pickle
+import tensorflow as tf
+from fastapi import FastAPI, UploadFile, File, Form
+from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 
-# ================================
-# GCS loading helpers
-# ================================
-def load_pickle_from_gcs(gcs_path: str):
-    client = storage.Client()
-    bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    buffer = io.BytesIO()
-    blob.download_to_file(buffer)
-    buffer.seek(0)
-    return joblib.load(buffer)
-
-def load_json_from_gcs(gcs_path: str):
-    client = storage.Client()
-    bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    return json.loads(blob.download_as_text())
-
-# ================================
-# Model loading
-# ================================
-CNN_MODEL_PATH = os.getenv("CNN_MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
-XGB_MODEL_PATH = os.getenv("XGB_MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
-FEATURE_COLUMNS_PATH = os.getenv("FEATURE_COLUMNS_PATH", "gs://smart-stethoscope/feature_columns.pkl")
-CLASS_NAMES_PATH = os.getenv("CLASS_NAMES_PATH", "gs://smart-stethoscope/class_names.json")
+CNN_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
+XGB_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
+cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
+with open(XGB_MODEL_PATH, "rb") as f:
+    xgb_model = pickle.load(f)
 
 app = FastAPI()
 
@@ -42,6 +18,15 @@ app = FastAPI()
 @app.get("/")
 def index():
     return {"status": "API is online"}
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "cnn_model_loaded": cnn_model is not None,
+        "xgb_model_loaded": xgb_model is not None,
+    }
 
 
 @app.post("/predict")
@@ -57,16 +42,14 @@ async def predict_audio(
     # 3. Preprocess: resample, slice cycles, trim for both xbg and cnn
     xgb_df, cnn_df = preprocess_for_prediction(audio, sr, start, end)
 
-    # 6. Align XGB feature columns to match training order
-    xgb_features = xgb_features[feature_columns]
-
-    # 7. Run hybrid prediction
-    result = predict_hybrid(
+    # 4. Predict with hybrid model, output is a dictionary:
+    # {"xgb_chunk_proba", "cnn_chunk_proba",
+    # "fused_chunk_proba", "final_proba", "final_prediction"}
+    predictions = predict(
         xgb_model=xgb_model,
         cnn_model=cnn_model,
-        xgb_df=xgb_features,
-        cnn_array=cnn_features,
-        class_names=CLASS_NAMES
+        xgb_features=xgb_df,
+        cnn_features=cnn_df,
     )
 
     # 5. Output
