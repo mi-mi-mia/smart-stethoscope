@@ -1,6 +1,7 @@
 from smart_stethoscope.ml_logic.data_loading import load_and_preprocess_raw_audio_data
 from smart_stethoscope.ml_logic.preprocessing import audio_preprocessing
 from smart_stethoscope.ml_logic.model import train_final_hybrid_models, predict_hybrid
+from smart_stethoscope.params import CLASS_NAMES
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import pandas as pd
@@ -64,7 +65,7 @@ def preprocess_for_prediction(audio, sampling_rate, start, end):
 
 
 def predict(xgb_model, cnn_model, xgb_features, cnn_features):
-    return predict_hybrid(xgb_model, cnn_model, xgb_features, cnn_features)
+    return predict_hybrid(xgb_model, cnn_model, xgb_features, cnn_features, class_names=CLASS_NAMES)
 
 
 if __name__ == "__main__":

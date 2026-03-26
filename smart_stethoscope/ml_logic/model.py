@@ -507,8 +507,7 @@ def predict_hybrid(
         Includes intermediate and final outputs
     """
     if class_names is None:
-        with open("models/class_names.json") as f:
-            class_names = json.load(f)
+        class_names = CLASS_NAMES
 
     with ThreadPoolExecutor() as executor:
         futures = [
