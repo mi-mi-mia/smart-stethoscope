@@ -1,8 +1,5 @@
 import os
 import io
-import json
-import numpy as np
-import pandas as pd
 import librosa
 import joblib
 from fastapi import FastAPI, UploadFile, File
@@ -39,62 +36,26 @@ XGB_MODEL_PATH = os.getenv("XGB_MODEL_PATH", "gs://smart-stethoscope/xgb_model.p
 FEATURE_COLUMNS_PATH = os.getenv("FEATURE_COLUMNS_PATH", "gs://smart-stethoscope/feature_columns.pkl")
 CLASS_NAMES_PATH = os.getenv("CLASS_NAMES_PATH", "gs://smart-stethoscope/class_names.json")
 
-cnn_model = keras.models.load_model(CNN_MODEL_PATH)
-xgb_model = load_pickle_from_gcs(XGB_MODEL_PATH)
-feature_columns = load_pickle_from_gcs(FEATURE_COLUMNS_PATH)
-CLASS_NAMES = load_json_from_gcs(CLASS_NAMES_PATH)
-
-# ================================
-# App
-# ================================
 app = FastAPI()
+
 
 @app.get("/")
 def index():
     return {"status": "API is online"}
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "cnn_model_loaded": cnn_model is not None,
-        "xgb_model_loaded": xgb_model is not None,
-        "feature_columns_loaded": feature_columns is not None,
-        "class_names": CLASS_NAMES
-    }
 
 @app.post("/predict")
 async def predict_audio(
-    audio_file: UploadFile = File(...),
-    annotation_file: UploadFile = File(...)
+    audio_file: UploadFile = File(...), start: float = Form(...), end: float = Form(...)
 ):
-    # 1. Read both files into memory as bytes
+    # 1. Read audio file into memory as bytes
     audio_bytes = await audio_file.read()
-    annotation_bytes = await annotation_file.read()
 
     # 2. Load audio into numpy array — no disk write needed
     audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=None)
 
-    # 3. Parse annotation .txt into a DataFrame
-    annotations = pd.read_csv(
-        io.StringIO(annotation_bytes.decode("utf-8")),
-        sep="\t",
-        names=["start", "end", "crackles", "wheezes"]
-    )
-
-    # 4. Preprocess each cycle — returns tabular features and mel spectrograms
-    features_list = []
-    mel_spec_list = []
-
-    for _, row in annotations.iterrows():
-        features_df, mel_spec = audio_preprocessing(audio, sr, row["start"], row["end"])
-        if mel_spec.shape[0] > 0:
-            features_list.append(features_df)
-            mel_spec_list.append(mel_spec)
-
-    # 5. Stack all cycles into arrays for hybrid model
-    xgb_features = pd.concat(features_list, ignore_index=True)
-    cnn_features = np.concatenate(mel_spec_list, axis=0)
+    # 3. Preprocess: resample, slice cycles, trim for both xbg and cnn
+    xgb_df, cnn_df = preprocess_for_prediction(audio, sr, start, end)
 
     # 6. Align XGB feature columns to match training order
     xgb_features = xgb_features[feature_columns]
@@ -108,11 +69,13 @@ async def predict_audio(
         class_names=CLASS_NAMES
     )
 
-    final = result["final_prediction"]
-
+    # 5. Output
     return {
-        "prediction": final["predicted_label"],
-        "confidence": final["confidence"],
-        "class_probabilities": final["class_probabilities"],
-        "cycles_analysed": len(mel_spec_list)
+        # 🎯 Final decision
+        "prediction": predictions["final_prediction"],
+        "final_proba": (
+            predictions["final_proba"].tolist()
+            if hasattr(predictions["final_proba"], "tolist")
+            else predictions["final_proba"]
+        ),
     }

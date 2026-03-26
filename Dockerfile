@@ -9,5 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY smart_stethoscope smart_stethoscope
 COPY setup.py setup.py
 
+# Set model path
+ENV MODEL_PATH=gs://smart-stethoscope/best_cnn_model.keras
+
 # Start the API
 CMD ["sh", "-c", "uvicorn smart_stethoscope.api.fast:app --host 0.0.0.0 --port ${PORT}"]
