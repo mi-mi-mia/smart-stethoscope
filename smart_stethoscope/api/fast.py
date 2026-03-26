@@ -52,7 +52,7 @@ async def predict_audio(
     # 2. Load audio into numpy array — no disk write needed
     audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=None)
 
-    # 3. Parse annotation .txt into a DataFrame
+    # 3. Parse annotation .txt into DataFrame
     annotations = pd.read_csv(
         io.StringIO(annotation_bytes.decode("utf-8")),
         sep="\t",
