@@ -60,7 +60,7 @@ async def predict_audio(
     # 3. Preprocess: resample, slice cycles, trim for both xbg and cnn
     xgb_df, cnn_df = preprocess_for_prediction(audio, sr, start, end)
 
-    # 4. Predict with hybrid model, output is a dictionary:
+    # 4. Predict with hybrid model, output is dictionary:
     # {"xgb_chunk_proba", "cnn_chunk_proba",
     # "fused_chunk_proba", "final_proba", "final_prediction"}
     predictions = predict(
