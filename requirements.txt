@@ -6,7 +6,7 @@ tensorflow
 fastapi
 uvicorn
 pandas
-tensorflow
 mlflow
 xgboost
 google-cloud-storage
+joblib
