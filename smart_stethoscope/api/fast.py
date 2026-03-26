@@ -81,6 +81,3 @@ async def predict_audio(
         ),
     }
 
-except Exception as e:
-        print("PREDICT ERROR:", repr(e))
-        raise
