@@ -6,8 +6,8 @@ import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File, Form
 from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 
-CNN_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
-XGB_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
+CNN_MODEL_PATH = os.getenv("CNN_MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
+XGB_MODEL_PATH = os.getenv("XGB_MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
 cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
 with open(XGB_MODEL_PATH, "rb") as f:
     xgb_model = pickle.load(f)
