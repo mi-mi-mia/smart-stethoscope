@@ -4,42 +4,17 @@ import json
 import numpy as np
 import pandas as pd
 import librosa
-import joblib
-from fastapi import FastAPI, UploadFile, File
-from tensorflow import keras
-from google.cloud import storage
-from smart_stethoscope.ml_logic.preprocessing import audio_preprocessing
-from smart_stethoscope.ml_logic.model import predict_hybrid
+import pickle
+import tensorflow as tf
+from fastapi import FastAPI, UploadFile, File, Form
+from smart_stethoscope.interface.main import preprocess_for_prediction, predict
 
-# ================================
-# GCS loading helpers
-# ================================
-def load_pickle_from_gcs(gcs_path: str):
-    """Load a pickle file from GCS into memory."""
-    client = storage.Client()
-    bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    buffer = io.BytesIO()
-    blob.download_to_file(buffer)
-    buffer.seek(0)
-    return joblib.load(buffer)
-
-def load_json_from_gcs(gcs_path: str):
-    """Load a JSON file from GCS into memory."""
-    client = storage.Client()
-    bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    return json.loads(blob.download_as_text())
-
-# ================================
-# Model loading
-# ================================
-CNN_MODEL_PATH = os.getenv("CNN_MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
-XGB_MODEL_PATH = os.getenv("XGB_MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
-FEATURE_COLUMNS_PATH = os.getenv("FEATURE_COLUMNS_PATH", "gs://smart-stethoscope/feature_columns.pkl")
-CLASS_NAMES_PATH = os.getenv("CLASS_NAMES_PATH", "gs://smart-stethoscope/class_names.json")
+# Load once at startup
+CNN_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/cnn_model.keras")
+XGB_MODEL_PATH = os.getenv("MODEL_PATH", "gs://smart-stethoscope/xgb_model.pkl")
+cnn_model = tf.keras.models.load_model(CNN_MODEL_PATH)
+with open(XGB_MODEL_PATH, "rb") as f:
+    xgb_model = pickle.load(f)
 
 cnn_model = keras.models.load_model(CNN_MODEL_PATH)
 xgb_model = load_pickle_from_gcs(XGB_MODEL_PATH)
@@ -98,16 +73,14 @@ async def predict_audio(
     xgb_features = pd.concat(features_list, ignore_index=True)
     cnn_features = np.concatenate(mel_spec_list, axis=0)
 
-    # 6. Align XGB feature columns to match training order
-    xgb_features = xgb_features[feature_columns]
-
-    # 7. Run hybrid prediction
-    result = predict_hybrid(
+    # 4. Predict with hybrid model, output is a dictionary:
+    # {"xgb_chunk_proba", "cnn_chunk_proba",
+    # "fused_chunk_proba", "final_proba", "final_prediction"}
+    predictions = predict(
         xgb_model=xgb_model,
         cnn_model=cnn_model,
-        xgb_df=xgb_features,
-        cnn_array=cnn_features,
-        class_names=CLASS_NAMES
+        xgb_features=xgb_df,
+        cnn_features=cnn_df,
     )
 
     final = result["final_prediction"]
