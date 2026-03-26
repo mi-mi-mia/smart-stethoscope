@@ -80,3 +80,7 @@ async def predict_audio(
             else predictions["final_proba"]
         ),
     }
+
+except Exception as e:
+        print("PREDICT ERROR:", repr(e))
+        raise
