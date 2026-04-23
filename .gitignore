@@ -7,24 +7,20 @@
 *.pyc
 **/build
 
-# Ignore these macos generated files
+# OS files
 .DS_Store
-
-# Ignore these Windows generated files
 *Zone.Identifier
 
-# Ignore VS Code generated files
-*.vscode
+# VS Code
+.vscode/
 
-# Raw data
+# Raw and generated data
 raw_data/
 preprocessed_data/
-*.csv
 *.sqlite
 *.zip
 
-# Data in the package
-# Add files you want to include in the git repo using `git add -f file_name`
+# Data in the package (ignored by default)
 data/
 
 # Saved models
@@ -34,25 +30,18 @@ models/*
 !models/feature_columns.pkl
 !models/class_names.json
 
-# Global file ignores
+# Model artifacts
 *.joblib
 *.h5
 *.pickle
 *.pckl
 *.pkl
-*.json
 
-# Re-allow the specific model artifacts after global ignores
-!models/xgb_model.pkl
-!models/feature_columns.pkl
-!models/class_names.json
-!models/cnn_model.keras
-
-# Credentials (or files with potentially credentials inside)
+# Credentials
 .env
 .env.yaml
 .credentials
 secrets.toml
 
-# Local reference notebooks (not tracked)
+# Local reference notebooks
 notebooks/kaggle_ref/
