@@ -6,6 +6,7 @@
 .python-version
 *.pyc
 **/build
+.venv
 
 # OS files
 .DS_Store
